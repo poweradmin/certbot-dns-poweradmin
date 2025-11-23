@@ -43,7 +43,7 @@ to this file for use during renewal, but does not store the file's contents.
    to issue arbitrary API calls on your behalf. Users who can cause Certbot to
    run using these credentials can complete a ``dns-01`` challenge to acquire
    new certificates or revoke existing certificates for associated domains,
-   even if those domains aren't being managed by this server.
+   even if this server isn't managing those domains.
 
 Certbot will emit a warning if it detects that the credentials file can be
 accessed by other users on your system. The warning reads "Unsafe permissions

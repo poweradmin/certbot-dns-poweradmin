@@ -55,7 +55,7 @@ certbot certonly \
 
 ## Examples
 
-Obtain a certificate for a single domain:
+Get a certificate for a single domain:
 
 ```
 certbot certonly \
@@ -64,7 +64,7 @@ certbot certonly \
   -d example.com
 ```
 
-Obtain a wildcard certificate:
+Get a wildcard certificate:
 
 ```
 certbot certonly \

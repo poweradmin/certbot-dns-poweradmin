@@ -56,9 +56,9 @@ class Authenticator(dns_common.DNSAuthenticator):
         api_version = credentials.conf("api-version")
 
         if not api_url:
-            raise errors.PluginError("PowerAdmin API URL is required (api-url)")
+            raise errors.PluginError("PowerAdmin API URL is required (dns_poweradmin_api_url)")
         if not api_key:
-            raise errors.PluginError("PowerAdmin API key is required (api-key)")
+            raise errors.PluginError("PowerAdmin API key is required (dns_poweradmin_api_key)")
         if api_version and api_version not in SUPPORTED_API_VERSIONS:
             raise errors.PluginError(
                 f"Invalid API version: {api_version}. "
