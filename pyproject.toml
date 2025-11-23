@@ -1,0 +1,52 @@
+[project]
+name = "certbot-dns-poweradmin"
+version = "0.1.0"
+description = "Poweradmin DNS Authenticator plugin for Certbot v5.0+"
+authors = [
+    { name = "Edmondas Girkantas", email = "edmondas@girkantas.lt" }
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "acme>=2.11.0",
+    "certbot>=4.2.0",
+    "requests>=2.25.0"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+    "Topic :: System :: Networking"
+]
+[project.urls]
+Homepage = "https://github.com/poweradmin/certbot-dns-poweradmin"
+"Bug Reports" = "https://github.com/poweradmin/certbot-dns-poweradmin/issues"
+Source = "https://github.com/poweradmin/certbot-dns-poweradmin"
+
+[project.entry-points."certbot.plugins"]
+dns-poweradmin = "certbot_dns_poweradmin.dns_poweradmin:Authenticator"
+
+[project.optional-dependencies]
+dev = [
+    "mock>=4.0.0",
+    "requests-mock>=1.10.0",
+    "pytest>=6.0.0",
+    "pytest-cov>=2.0.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["certbot_dns_poweradmin"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

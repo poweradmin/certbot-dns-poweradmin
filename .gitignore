@@ -4,8 +4,9 @@
 *.swo
 *.egg-info
 
-dist/
 tmp/
+/dist/*
+!/dist/.gitkeep
 
 /.vscode
 /.idea
