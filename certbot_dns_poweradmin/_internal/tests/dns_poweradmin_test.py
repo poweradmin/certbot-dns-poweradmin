@@ -1,12 +1,11 @@
 """Tests for certbot_dns_poweradmin._internal.dns_poweradmin."""
+
 from __future__ import annotations
 
 import unittest
-from typing import Optional
 from unittest import mock
 
 import requests_mock
-
 from certbot import errors
 from certbot.compat import os
 from certbot.plugins import dns_test_common
@@ -16,15 +15,12 @@ from certbot.tests import util as test_util
 from certbot_dns_poweradmin import Authenticator
 from certbot_dns_poweradmin._internal.dns_poweradmin import _PowerAdminClient
 
-
 API_URL = "https://poweradmin.example.com"
 API_KEY = "test-api-key"
 API_VERSION = "v2"
 
 
-class AuthenticatorTest(
-    test_util.TempDirTestCase, dns_test_common.BaseAuthenticatorTest
-):
+class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthenticatorTest):
     """Tests for Authenticator class."""
 
     def setUp(self) -> None:
@@ -47,17 +43,13 @@ class AuthenticatorTest(
         self.auth = Authenticator(self.config, "poweradmin")
 
         self.mock_client = mock.MagicMock()
-        self.auth._get_poweradmin_client = mock.MagicMock(
-            return_value=self.mock_client
-        )
+        self.auth._get_poweradmin_client = mock.MagicMock(return_value=self.mock_client)
 
     @test_util.patch_display_util()
     def test_perform(self, _: mock.MagicMock) -> None:
         self.auth.perform([self.achall])
         expected = [
-            mock.call.add_txt_record(
-                DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY, mock.ANY
-            )
+            mock.call.add_txt_record(DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY, mock.ANY)
         ]
         self.assertEqual(expected, self.mock_client.mock_calls)
 
@@ -65,11 +57,7 @@ class AuthenticatorTest(
     def test_cleanup(self, _: mock.MagicMock) -> None:
         self.auth._attempt_cleanup = True
         self.auth.cleanup([self.achall])
-        expected = [
-            mock.call.del_txt_record(
-                DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY
-            )
-        ]
+        expected = [mock.call.del_txt_record(DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY)]
         self.assertEqual(expected, self.mock_client.mock_calls)
 
 
@@ -85,9 +73,7 @@ class PowerAdminClientTest(unittest.TestCase):
         self.client = _PowerAdminClient(API_URL, API_KEY, API_VERSION)
         self.client.session.mount("https://", self.adapter)
 
-    def _register_zones_response(
-        self, zones: Optional[list[dict]] = None
-    ) -> None:
+    def _register_zones_response(self, zones: list[dict] | None = None) -> None:
         """Register a mock response for zones endpoint."""
         if zones is None:
             zones = [{"id": 1, "name": "example.com"}]
@@ -98,7 +84,7 @@ class PowerAdminClientTest(unittest.TestCase):
         )
 
     def _register_records_response(
-        self, zone_id: int = 1, records: Optional[list[dict]] = None
+        self, zone_id: int = 1, records: list[dict] | None = None
     ) -> None:
         """Register a mock response for records endpoint."""
         if records is None:
@@ -109,9 +95,7 @@ class PowerAdminClientTest(unittest.TestCase):
             json=records,
         )
 
-    def _register_add_record_response(
-        self, zone_id: int = 1, status_code: int = 201
-    ) -> None:
+    def _register_add_record_response(self, zone_id: int = 1, status_code: int = 201) -> None:
         """Register a mock response for adding a record."""
         self.adapter.register_uri(
             "POST",
@@ -136,9 +120,7 @@ class PowerAdminClientTest(unittest.TestCase):
         self._register_records_response()
         self._register_add_record_response()
 
-        self.client.add_txt_record(
-            DOMAIN, self.record_name, self.record_content, self.record_ttl
-        )
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
 
         # Verify the POST request was made
         history = self.adapter.request_history
@@ -160,9 +142,7 @@ class PowerAdminClientTest(unittest.TestCase):
         )
 
         # Should not raise, should just return (idempotent)
-        self.client.add_txt_record(
-            DOMAIN, self.record_name, self.record_content, self.record_ttl
-        )
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
 
         # Verify no POST request was made
         history = self.adapter.request_history
@@ -224,9 +204,7 @@ class PowerAdminClientTest(unittest.TestCase):
         self._register_add_record_response()
 
         # Should find the zone despite trailing dot
-        self.client.add_txt_record(
-            DOMAIN, self.record_name, self.record_content, self.record_ttl
-        )
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
 
     def test_api_error_handling(self) -> None:
         """Test API error handling."""

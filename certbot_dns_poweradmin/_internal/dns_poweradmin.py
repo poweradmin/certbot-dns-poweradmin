@@ -1,11 +1,12 @@
 """DNS Authenticator for PowerAdmin."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import requests
-
 from certbot import errors
 from certbot.plugins import dns_common
 from certbot.plugins.dns_common import CredentialsConfiguration
@@ -22,12 +23,14 @@ class Authenticator(dns_common.DNSAuthenticator):
     This Authenticator uses the PowerAdmin API to fulfill a dns-01 challenge.
     """
 
-    description = "Obtain certificates using a DNS TXT record (if you are using PowerAdmin for DNS)."
+    description = (
+        "Obtain certificates using a DNS TXT record (if you are using PowerAdmin for DNS)."
+    )
     ttl = 120
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.credentials: Optional[CredentialsConfiguration] = None
+        self.credentials: CredentialsConfiguration | None = None
 
     @classmethod
     def add_parser_arguments(
@@ -66,9 +69,7 @@ class Authenticator(dns_common.DNSAuthenticator):
             )
 
     def _perform(self, domain: str, validation_name: str, validation: str) -> None:
-        self._get_poweradmin_client().add_txt_record(
-            domain, validation_name, validation, self.ttl
-        )
+        self._get_poweradmin_client().add_txt_record(domain, validation_name, validation, self.ttl)
 
     def _cleanup(self, domain: str, validation_name: str, validation: str) -> None:
         self._get_poweradmin_client().del_txt_record(domain, validation_name, validation)
@@ -77,11 +78,17 @@ class Authenticator(dns_common.DNSAuthenticator):
         if self.credentials is None:
             raise errors.PluginError("Credentials not configured")
 
+        api_url = self.credentials.conf("api-url")
+        api_key = self.credentials.conf("api-key")
         api_version = self.credentials.conf("api-version") or DEFAULT_API_VERSION
 
+        # These are validated in _validate_credentials, so they should never be None
+        assert api_url is not None
+        assert api_key is not None
+
         return _PowerAdminClient(
-            api_url=self.credentials.conf("api-url"),
-            api_key=self.credentials.conf("api-key"),
+            api_url=api_url,
+            api_key=api_key,
             api_version=api_version,
         )
 
@@ -113,11 +120,9 @@ class _PowerAdminClient:
             record_content: The record content (validation token).
             record_ttl: The record TTL in seconds.
         """
-        zone_id, zone_name = self._find_zone_id(domain)
+        zone_id, _zone_name = self._find_zone_id(domain)
         if zone_id is None:
-            raise errors.PluginError(
-                f"Unable to find a PowerAdmin zone for {domain}"
-            )
+            raise errors.PluginError(f"Unable to find a PowerAdmin zone for {domain}")
 
         # Check if a record already exists (idempotent)
         existing_record = self._find_txt_record(zone_id, record_name, record_content)
@@ -140,15 +145,11 @@ class _PowerAdminClient:
             logger.debug("Successfully added TXT record for %s", record_name)
         except requests.exceptions.HTTPError as e:
             hint = self._get_error_hint(e.response)
-            raise errors.PluginError(
-                f"Error adding TXT record: {e}{hint}"
-            )
+            raise errors.PluginError(f"Error adding TXT record: {e}{hint}") from e
         except requests.exceptions.RequestException as e:
-            raise errors.PluginError(f"Error communicating with PowerAdmin API: {e}")
+            raise errors.PluginError(f"Error communicating with PowerAdmin API: {e}") from e
 
-    def del_txt_record(
-        self, domain: str, record_name: str, record_content: str
-    ) -> None:
+    def del_txt_record(self, domain: str, record_name: str, record_content: str) -> None:
         """Delete a TXT record using the PowerAdmin API.
 
         Args:
@@ -157,7 +158,7 @@ class _PowerAdminClient:
             record_content: The record content (validation token).
         """
         try:
-            zone_id, zone_name = self._find_zone_id(domain)
+            zone_id, _zone_name = self._find_zone_id(domain)
             if zone_id is None:
                 logger.debug("Unable to find zone for %s during cleanup", domain)
                 return
@@ -180,7 +181,7 @@ class _PowerAdminClient:
         except requests.exceptions.RequestException as e:
             logger.warning("Error deleting TXT record during cleanup: %s", e)
 
-    def _find_zone_id(self, domain: str) -> tuple[Optional[int], Optional[str]]:
+    def _find_zone_id(self, domain: str) -> tuple[int | None, str | None]:
         """Find the zone ID for a given domain.
 
         Args:
@@ -200,7 +201,7 @@ class _PowerAdminClient:
 
         return None, None
 
-    def _get_zone_id_by_name(self, zone_name: str) -> Optional[int]:
+    def _get_zone_id_by_name(self, zone_name: str) -> int | None:
         """Get zone ID by zone name from PowerAdmin API.
 
         Args:
@@ -223,7 +224,8 @@ class _PowerAdminClient:
                 # Zone name might be stored with or without a trailing dot
                 zone_stored_name = zone.get("name", "").rstrip(".")
                 if zone_stored_name == zone_name or zone_stored_name == zone_name.rstrip("."):
-                    return zone.get("id")
+                    zone_id: int | None = zone.get("id")
+                    return zone_id
 
             return None
 
@@ -233,7 +235,7 @@ class _PowerAdminClient:
 
     def _find_txt_record(
         self, zone_id: int, record_name: str, record_content: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Find a specific TXT record in a zone.
 
         Args:
@@ -267,7 +269,8 @@ class _PowerAdminClient:
                 # Compare content (may be quoted in API response)
                 stored_content = record.get("content", "").strip('"')
                 if stored_content == record_content:
-                    return record
+                    result: dict[str, Any] = record
+                    return result
 
             return None
 
@@ -276,7 +279,7 @@ class _PowerAdminClient:
             return None
 
     @staticmethod
-    def _get_error_hint(response: Optional[requests.Response]) -> str:
+    def _get_error_hint(response: requests.Response | None) -> str:
         """Extract error hint from API response.
 
         Args:

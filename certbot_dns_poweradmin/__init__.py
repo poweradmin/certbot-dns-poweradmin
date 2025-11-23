@@ -97,6 +97,7 @@ Examples
      -d example.com
 
 """
+
 from certbot_dns_poweradmin._internal.dns_poweradmin import Authenticator
 
 __all__ = ["Authenticator"]
