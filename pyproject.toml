@@ -1,11 +1,11 @@
 [project]
 name = "certbot-dns-poweradmin"
 version = "0.1.0"
-description = "Poweradmin DNS Authenticator plugin for Certbot v5.0+"
+description = "PowerAdmin DNS Authenticator plugin for Certbot"
 authors = [
     { name = "Edmondas Girkantas", email = "edmondas@girkantas.lt" }
 ]
-license = { file = "LICENSE" }
+license = { file = "LICENSE.txt" }
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,15 +14,16 @@ dependencies = [
     "requests>=2.25.0"
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Security",
     "Topic :: System :: Systems Administration",
