@@ -17,7 +17,7 @@ setup(
     ],
     entry_points={
         'certbot.plugins': [
-            'dns-poweradmin = certbot_dns_poweradmin.dns_poweradmin:Authenticator',
+            'dns-poweradmin = certbot_dns_poweradmin._internal.dns_poweradmin:Authenticator',
         ],
     },
     classifiers=[

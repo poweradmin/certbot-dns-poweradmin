@@ -1,12 +1,22 @@
-*.pyc
-*.pyo
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
 *.swp
-*.swo
-*.egg-info
 
-tmp/
-/dist/*
-!/dist/.gitkeep
-
-/.vscode
-/.idea
+# OS
+.DS_Store
