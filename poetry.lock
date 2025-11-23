@@ -591,24 +591,6 @@ cryptography = ">=1.5"
 docs = ["sphinx (>=4.3.0)", "sphinx-rtd-theme (>=1.0)"]
 
 [[package]]
-name = "mock"
-version = "5.2.0"
-description = "Rolling backport of unittest.mock for all Pythons"
-optional = true
-python-versions = ">=3.6"
-groups = ["main"]
-markers = "extra == \"dev\""
-files = [
-    {file = "mock-5.2.0-py3-none-any.whl", hash = "sha256:7ba87f72ca0e915175596069dbbcc7c75af7b5e9b9bc107ad6349ede0819982f"},
-    {file = "mock-5.2.0.tar.gz", hash = "sha256:4e460e818629b4b173f32d08bf30d3af8123afbb8e04bb5707a1fd4799e503f0"},
-]
-
-[package.extras]
-build = ["blurb", "twine", "wheel"]
-docs = ["sphinx"]
-test = ["pytest", "pytest-cov"]
-
-[[package]]
 name = "packaging"
 version = "25.0"
 description = "Core utilities for Python packages"
@@ -914,9 +896,9 @@ socks = ["pysocks (>=1.5.6,!=1.5.7,<2.0)"]
 zstd = ["zstandard (>=0.18.0)"]
 
 [extras]
-dev = ["mock", "pytest", "pytest-cov", "requests-mock"]
+dev = ["pytest", "pytest-cov", "requests-mock"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "58d0dd8a4859925f21ab2df2784858abbd118fd1b28562195241bb95a5126b6f"
+content-hash = "3d14f657ecb2b3df0ed977d2d1ded5a8bfcdc80d2d299932f8f9097522698af9"

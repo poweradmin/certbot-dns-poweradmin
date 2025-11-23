@@ -11,8 +11,9 @@ setup(
     python_requires='>=3.10',
     packages=find_packages(),
     install_requires=[
-        'certbot>=2.0.0',
-        'requests',
+        'acme>=5.1.0',
+        'certbot>=5.1.0',
+        'requests>=2.32.5',
     ],
     entry_points={
         'certbot.plugins': [
