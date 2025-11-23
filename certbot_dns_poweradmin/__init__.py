@@ -35,7 +35,7 @@ credentials, obtained from your PowerAdmin installation.
 
 The path to this file can be provided interactively or using the
 ``--dns-poweradmin-credentials`` command-line argument. Certbot records the path
-to this file for use during renewal, but does not store the file's contents.
+to this file for use during renewal but does not store the file's contents.
 
 .. caution::
    You should protect these API credentials as you would the password to your
@@ -45,10 +45,10 @@ to this file for use during renewal, but does not store the file's contents.
    new certificates or revoke existing certificates for associated domains,
    even if this server isn't managing those domains.
 
-Certbot will emit a warning if it detects that the credentials file can be
+Certbot will emit a warning if it detects that the credential file can be
 accessed by other users on your system. The warning reads "Unsafe permissions
-on credentials configuration file", followed by the path to the credentials
-file. This warning will be emitted each time Certbot uses the credentials file,
+on credential configuration file", followed by the path to the credential
+file. This warning will be emitted each time Certbot uses the credential file,
 including for renewal, and cannot be silenced except by addressing the issue
 (e.g., by using a command like ``chmod 600`` to restrict access to the file).
 
@@ -61,7 +61,7 @@ PowerAdmin supports two API versions:
 - ``v1``: Stable API version
 - ``v2``: Enhanced API with additional features (default)
 
-You can specify the API version in your credentials file using the
+You can specify the API version in your credential file using the
 ``dns_poweradmin_api_version`` option. If not specified, ``v2`` is used by default.
 
 

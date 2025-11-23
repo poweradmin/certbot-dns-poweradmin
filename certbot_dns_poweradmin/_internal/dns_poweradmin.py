@@ -113,13 +113,13 @@ class _PowerAdminClient:
             record_content: The record content (validation token).
             record_ttl: The record TTL in seconds.
         """
-        zone_id, zone_name = self._find_zone_id(domain, record_name)
+        zone_id, zone_name = self._find_zone_id(domain)
         if zone_id is None:
             raise errors.PluginError(
                 f"Unable to find a PowerAdmin zone for {domain}"
             )
 
-        # Check if record already exists (idempotent)
+        # Check if a record already exists (idempotent)
         existing_record = self._find_txt_record(zone_id, record_name, record_content)
         if existing_record is not None:
             logger.debug("TXT record already exists, skipping creation")
@@ -157,7 +157,7 @@ class _PowerAdminClient:
             record_content: The record content (validation token).
         """
         try:
-            zone_id, zone_name = self._find_zone_id(domain, record_name)
+            zone_id, zone_name = self._find_zone_id(domain)
             if zone_id is None:
                 logger.debug("Unable to find zone for %s during cleanup", domain)
                 return
@@ -180,14 +180,11 @@ class _PowerAdminClient:
         except requests.exceptions.RequestException as e:
             logger.warning("Error deleting TXT record during cleanup: %s", e)
 
-    def _find_zone_id(
-        self, domain: str, record_name: str
-    ) -> tuple[Optional[int], Optional[str]]:
+    def _find_zone_id(self, domain: str) -> tuple[Optional[int], Optional[str]]:
         """Find the zone ID for a given domain.
 
         Args:
             domain: The domain being validated.
-            record_name: The full record name.
 
         Returns:
             Tuple of (zone_id, zone_name) or (None, None) if not found.
@@ -223,7 +220,7 @@ class _PowerAdminClient:
                 zones = zones["data"]
 
             for zone in zones:
-                # Zone name might be stored with or without trailing dot
+                # Zone name might be stored with or without a trailing dot
                 zone_stored_name = zone.get("name", "").rstrip(".")
                 if zone_stored_name == zone_name or zone_stored_name == zone_name.rstrip("."):
                     return zone.get("id")
@@ -261,7 +258,7 @@ class _PowerAdminClient:
                 if record.get("type") != "TXT":
                     continue
 
-                # Compare record name (with or without trailing dot)
+                # Compare record name (with or without a trailing dot)
                 stored_name = record.get("name", "").rstrip(".")
                 target_name = record_name.rstrip(".")
                 if stored_name != target_name:
@@ -278,7 +275,8 @@ class _PowerAdminClient:
             logger.debug("Error fetching records: %s", e)
             return None
 
-    def _get_error_hint(self, response: Optional[requests.Response]) -> str:
+    @staticmethod
+    def _get_error_hint(response: Optional[requests.Response]) -> str:
         """Extract error hint from API response.
 
         Args:
@@ -300,7 +298,7 @@ class _PowerAdminClient:
         except (ValueError, KeyError):
             pass
 
-        # Add specific hints based on status code
+        # Add specific hints based on the status code
         if response.status_code == 401:
             hint = hint or " (Is your API key correct?)"
         elif response.status_code == 403:

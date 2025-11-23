@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Optional
 from unittest import mock
 
 import requests_mock
@@ -12,10 +13,8 @@ from certbot.plugins import dns_test_common
 from certbot.plugins.dns_test_common import DOMAIN
 from certbot.tests import util as test_util
 
-from certbot_dns_poweradmin._internal.dns_poweradmin import (
-    Authenticator,
-    _PowerAdminClient,
-)
+from certbot_dns_poweradmin import Authenticator
+from certbot_dns_poweradmin._internal.dns_poweradmin import _PowerAdminClient
 
 
 API_URL = "https://poweradmin.example.com"
@@ -53,7 +52,7 @@ class AuthenticatorTest(
         )
 
     @test_util.patch_display_util()
-    def test_perform(self, unused_mock_get_utility: mock.MagicMock) -> None:
+    def test_perform(self, _: mock.MagicMock) -> None:
         self.auth.perform([self.achall])
         expected = [
             mock.call.add_txt_record(
@@ -63,7 +62,7 @@ class AuthenticatorTest(
         self.assertEqual(expected, self.mock_client.mock_calls)
 
     @test_util.patch_display_util()
-    def test_cleanup(self, unused_mock_get_utility: mock.MagicMock) -> None:
+    def test_cleanup(self, _: mock.MagicMock) -> None:
         self.auth._attempt_cleanup = True
         self.auth.cleanup([self.achall])
         expected = [
@@ -87,7 +86,7 @@ class PowerAdminClientTest(unittest.TestCase):
         self.client.session.mount("https://", self.adapter)
 
     def _register_zones_response(
-        self, zones: list[dict] | None = None
+        self, zones: Optional[list[dict]] = None
     ) -> None:
         """Register a mock response for zones endpoint."""
         if zones is None:
@@ -99,7 +98,7 @@ class PowerAdminClientTest(unittest.TestCase):
         )
 
     def _register_records_response(
-        self, zone_id: int = 1, records: list[dict] | None = None
+        self, zone_id: int = 1, records: Optional[list[dict]] = None
     ) -> None:
         """Register a mock response for records endpoint."""
         if records is None:
@@ -171,7 +170,7 @@ class PowerAdminClientTest(unittest.TestCase):
         self.assertEqual(len(post_requests), 0)
 
     def test_add_txt_record_zone_not_found(self) -> None:
-        """Test adding a TXT record when zone is not found."""
+        """Test adding a TXT record when a zone is not found."""
         self._register_zones_response(zones=[])
 
         with self.assertRaises(errors.PluginError) as context:
@@ -212,7 +211,7 @@ class PowerAdminClientTest(unittest.TestCase):
         self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
 
     def test_del_txt_record_zone_not_found(self) -> None:
-        """Test deleting when zone is not found."""
+        """Test deleting when a zone is not found."""
         self._register_zones_response(zones=[])
 
         # Should not raise (graceful cleanup)

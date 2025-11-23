@@ -21,7 +21,7 @@ You'll need an API key with permissions to:
 
 ## Usage
 
-1. Create a credentials file (e.g., `/etc/letsencrypt/poweradmin.ini`):
+1. Create a credential file (e.g., `/etc/letsencrypt/poweradmin.ini`):
 
 ```ini
 dns_poweradmin_api_url = https://poweradmin.example.com
@@ -31,7 +31,7 @@ dns_poweradmin_api_version = v2
 
 The `api_version` is optional and defaults to `v2`. Set it to `v1` if your PowerAdmin installation uses the older API.
 
-2. Secure the credentials file:
+2. Secure the credential file:
 
 ```
 chmod 600 /etc/letsencrypt/poweradmin.ini
