@@ -110,6 +110,42 @@ docker run --rm \
   -d example.com
 ```
 
+## Troubleshooting
+
+### Plugin not found by certbot
+
+If `certbot plugins` doesn't show `dns-poweradmin`, ensure both certbot and the plugin are installed in the same Python environment:
+
+```bash
+# Check where certbot is installed
+which certbot
+
+# If using system certbot but plugin in venv, either:
+# Option 1: Install certbot in the same venv
+pip install certbot certbot-dns-poweradmin
+
+# Option 2: Use certbot from the venv
+python -m certbot plugins
+```
+
+### Virtual environment usage
+
+When using a virtual environment, install both certbot and the plugin together:
+
+```bash
+python3 -m venv certbot-env
+source certbot-env/bin/activate
+pip install certbot certbot-dns-poweradmin
+
+# Run certbot from the venv
+certbot plugins  # should show dns-poweradmin
+```
+
+### API connection issues
+
+- Verify your API URL is correct and accessible
+- Check that your API key has the required permissions
+
 ## License
 
 Apache License 2.0
