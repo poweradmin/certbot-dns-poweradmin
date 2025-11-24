@@ -1,7 +1,7 @@
 # certbot-dns-poweradmin
 
 [![Test](https://github.com/poweradmin/certbot-dns-poweradmin/actions/workflows/test.yml/badge.svg)](https://github.com/poweradmin/certbot-dns-poweradmin/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/poweradmin/certbot-dns-poweradmin/branch/main/graph/badge.svg)](https://codecov.io/gh/poweradmin/certbot-dns-poweradmin)
+[![codecov](https://codecov.io/gh/poweradmin/certbot-dns-poweradmin/graph/badge.svg?token=3686WTALGK)](https://codecov.io/gh/poweradmin/certbot-dns-poweradmin)
 [![PyPI](https://img.shields.io/pypi/v/certbot-dns-poweradmin)](https://pypi.org/project/certbot-dns-poweradmin/)
 [![Python](https://img.shields.io/pypi/pyversions/certbot-dns-poweradmin)](https://pypi.org/project/certbot-dns-poweradmin/)
 
