@@ -73,14 +73,28 @@ class PowerAdminClientTest(unittest.TestCase):
         self.client = _PowerAdminClient(API_URL, API_KEY, API_VERSION)
         self.client.session.mount("https://", self.adapter)
 
-    def _register_zones_response(self, zones: list[dict] | None = None) -> None:
-        """Register a mock response for zones endpoint."""
+    def _register_zones_response(
+        self, zones: list[dict] | None = None, api_v2_format: bool = False
+    ) -> None:
+        """Register a mock response for zones endpoint.
+
+        Args:
+            zones: List of zone dicts.
+            api_v2_format: If True, wrap in {"data": {"zones": [...]}},
+                           otherwise use {"data": [...]}.
+        """
         if zones is None:
             zones = [{"id": 1, "name": "example.com"}]
+
+        data: dict[str, list[dict[str, str | int]]] | list[dict[str, str | int]] = (
+            {"zones": zones} if api_v2_format else zones
+        )
+        response = {"data": data}
+
         self.adapter.register_uri(
             "GET",
             f"{API_URL}/api/{API_VERSION}/zones",
-            json=zones,
+            json=response,
         )
 
     def _register_records_response(
@@ -92,7 +106,7 @@ class PowerAdminClientTest(unittest.TestCase):
         self.adapter.register_uri(
             "GET",
             f"{API_URL}/api/{API_VERSION}/zones/{zone_id}/records",
-            json=records,
+            json={"data": records},
         )
 
     def _register_add_record_response(self, zone_id: int = 1, status_code: int = 201) -> None:
@@ -235,6 +249,34 @@ class PowerAdminClientTest(unittest.TestCase):
         history = self.adapter.request_history
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0].headers["X-API-Key"], API_KEY)
+
+    def test_zones_api_v2_nested_format(self) -> None:
+        """Test handling of API v2 nested zones response format."""
+        self._register_zones_response(api_v2_format=True)
+        self._register_records_response()
+        self._register_add_record_response()
+
+        # Should find the zone with nested format
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        # Verify the POST request was made
+        history = self.adapter.request_history
+        post_requests = [r for r in history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 1)
+
+    def test_zones_api_v1_flat_format(self) -> None:
+        """Test handling of API v1 flat zones response format."""
+        self._register_zones_response(api_v2_format=False)
+        self._register_records_response()
+        self._register_add_record_response()
+
+        # Should find the zone with flat format
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        # Verify the POST request was made
+        history = self.adapter.request_history
+        post_requests = [r for r in history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 1)
 
 
 if __name__ == "__main__":

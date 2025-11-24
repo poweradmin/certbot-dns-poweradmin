@@ -216,9 +216,12 @@ class _PowerAdminClient:
             response.raise_for_status()
             zones = response.json()
 
-            # Handle both list and dict response formats
+            # Handle various response formats from PowerAdmin API
             if isinstance(zones, dict) and "data" in zones:
                 zones = zones["data"]
+                # API v2 returns {"data": {"zones": [...]}}
+                if isinstance(zones, dict) and "zones" in zones:
+                    zones = zones["zones"]
 
             for zone in zones:
                 # Zone name might be stored with or without a trailing dot
