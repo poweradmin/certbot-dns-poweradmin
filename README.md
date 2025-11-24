@@ -146,6 +146,14 @@ certbot plugins  # should show dns-poweradmin
 - Verify your API URL is correct and accessible
 - Check that your API key has the required permissions
 
+## Sponsors
+
+<a href="https://www.stepping-stone.ch/">
+  <img src=".github/stepping_stone_logo.svg" alt="stepping stone AG" height="60">
+</a>
+
+We thank [stepping stone AG](https://www.stepping-stone.ch/) for their support of this project.
+
 ## License
 
 Apache License 2.0
