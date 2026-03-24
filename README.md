@@ -9,6 +9,13 @@ PowerAdmin DNS Authenticator plugin for Certbot
 
 This plugin automates the process of completing a `dns-01` challenge by creating, and subsequently removing, TXT records using the PowerAdmin API.
 
+## Version Compatibility
+
+| Plugin Version | Poweradmin Version | Python | Certbot |
+|---|---|---|---|
+| 0.2.0 | 4.1.0+ | >= 3.10 | >= 5.1.0 |
+| 0.1.x | 4.1.0 - 4.2.x | >= 3.10 | >= 5.1.0 |
+
 ## Installation
 
 ```

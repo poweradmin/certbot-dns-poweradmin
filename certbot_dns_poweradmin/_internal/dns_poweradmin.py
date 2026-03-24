@@ -255,9 +255,12 @@ class _PowerAdminClient:
             response.raise_for_status()
             records = response.json()
 
-            # Handle both list and dict response formats
+            # Handle various response formats from PowerAdmin API
             if isinstance(records, dict) and "data" in records:
                 records = records["data"]
+                # API v2 returns {"data": {"records": [...]}}
+                if isinstance(records, dict) and "records" in records:
+                    records = records["records"]
 
             for record in records:
                 if record.get("type") != "TXT":

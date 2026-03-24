@@ -264,6 +264,30 @@ class PowerAdminClientTest(unittest.TestCase):
         post_requests = [r for r in history if r.method == "POST"]
         self.assertEqual(len(post_requests), 1)
 
+    def test_records_api_v2_nested_format(self) -> None:
+        """Test handling of API v2 nested records response format."""
+        self._register_zones_response(api_v2_format=True)
+        self.adapter.register_uri(
+            "GET",
+            f"{API_URL}/api/{API_VERSION}/zones/1/records",
+            json={"data": {"records": [
+                {
+                    "id": 100,
+                    "name": self.record_name,
+                    "type": "TXT",
+                    "content": self.record_content,
+                }
+            ]}},
+        )
+        self._register_delete_record_response()
+
+        self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
+
+        # Verify the DELETE request was made (record was found in nested format)
+        history = self.adapter.request_history
+        delete_requests = [r for r in history if r.method == "DELETE"]
+        self.assertEqual(len(delete_requests), 1)
+
     def test_zones_api_v1_flat_format(self) -> None:
         """Test handling of API v1 flat zones response format."""
         self._register_zones_response(api_v2_format=False)
