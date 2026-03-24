@@ -270,14 +270,18 @@ class PowerAdminClientTest(unittest.TestCase):
         self.adapter.register_uri(
             "GET",
             f"{API_URL}/api/{API_VERSION}/zones/1/records",
-            json={"data": {"records": [
-                {
-                    "id": 100,
-                    "name": self.record_name,
-                    "type": "TXT",
-                    "content": self.record_content,
+            json={
+                "data": {
+                    "records": [
+                        {
+                            "id": 100,
+                            "name": self.record_name,
+                            "type": "TXT",
+                            "content": self.record_content,
+                        }
+                    ]
                 }
-            ]}},
+            },
         )
         self._register_delete_record_response()
 
