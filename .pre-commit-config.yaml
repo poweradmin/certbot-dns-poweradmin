@@ -20,6 +20,6 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies:
-          - types-requests>=2.32.0
+          - types-requests>=2.33.0.20260408
         args: [--strict]
         exclude: ^setup\.py$
