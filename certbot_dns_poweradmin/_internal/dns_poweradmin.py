@@ -305,6 +305,7 @@ class _PowerAdminClient:
                 if message:
                     hint = f" ({message})"
         except (ValueError, KeyError):
+            # Malformed or non-JSON body; fall back to status-code hints below.
             pass
 
         # Add specific hints based on the status code
