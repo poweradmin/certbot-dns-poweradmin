@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import unittest
-from unittest import mock
+from unittest import TestCase, main, mock
 
 import requests_mock
 from certbot import errors
@@ -61,7 +60,7 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
         self.assertEqual(expected, self.mock_client.mock_calls)
 
 
-class PowerAdminClientTest(unittest.TestCase):
+class PowerAdminClientTest(TestCase):
     """Tests for _PowerAdminClient class."""
 
     record_name = "_acme-challenge.example.com"
@@ -308,4 +307,4 @@ class PowerAdminClientTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()
