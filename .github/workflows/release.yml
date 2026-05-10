@@ -18,7 +18,3 @@ jobs:
     steps:
       - name: Run release-please
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          # v0.2.0 commit SHA — anchors changelog so release-please ignores history before it.
-          # Only used until a release-please-managed release exists; once v0.2.1 is tagged, this is a no-op.
-          bootstrap-sha: ca012d2bae8803bf318cd862e68f596eea1181d3
