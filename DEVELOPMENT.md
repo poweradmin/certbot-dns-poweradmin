@@ -19,15 +19,18 @@ tox -e typecheck       # Mypy only
 
 ## Release Process
 
-1. Bump version in `pyproject.toml`
-2. Commit and push to `main`
-3. Create a GitHub Release with a `v*` tag:
-   ```bash
-   gh release create v0.x.0 --title "v0.x.0" --notes "Release notes here"
-   ```
-4. The `publish.yml` workflow automatically builds and uploads to PyPI
+Releases are automated via [release-please](https://github.com/googleapis/release-please).
+
+1. Land changes on `main` using [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore(deps):`, etc.)
+2. The `release.yml` workflow runs release-please, which opens (or updates) a **Release PR** with the bumped version in `pyproject.toml` and a generated `CHANGELOG.md` entry
+3. Review and merge the Release PR — release-please tags the commit and publishes a GitHub Release
+4. The `publish.yml` workflow then builds and uploads the package to PyPI
 
 **Requires** `PYPI_API_TOKEN` secret in repository settings.
+
+### Manual TestPyPI publish
+
+Trigger the `Publish to TestPyPI` workflow via the Actions tab (`workflow_dispatch`). Requires `TEST_PYPI_API_TOKEN`.
 
 ## Technical Notes
 
