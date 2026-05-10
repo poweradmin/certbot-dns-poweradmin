@@ -16,10 +16,10 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.20.2
+    rev: v2.0.0
     hooks:
       - id: mypy
         additional_dependencies:
-          - types-requests>=2.33.0.20260503
+          - types-requests>=2.33.0.20260508
         args: [--strict]
         exclude: ^setup\.py$
