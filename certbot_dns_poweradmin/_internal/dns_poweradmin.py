@@ -232,6 +232,15 @@ class _PowerAdminClient:
 
             return None
 
+        except requests.exceptions.HTTPError as e:
+            # A real API failure (auth or server error) must be visible, not
+            # silently treated as "zone not found".
+            logger.warning(
+                "PowerAdmin API error fetching zones: %s%s",
+                e,
+                self._get_error_hint(e.response),
+            )
+            return None
         except requests.exceptions.RequestException as e:
             logger.debug("Error fetching zones: %s", e)
             return None
@@ -280,6 +289,13 @@ class _PowerAdminClient:
 
             return None
 
+        except requests.exceptions.HTTPError as e:
+            logger.warning(
+                "PowerAdmin API error fetching records: %s%s",
+                e,
+                self._get_error_hint(e.response),
+            )
+            return None
         except requests.exceptions.RequestException as e:
             logger.debug("Error fetching records: %s", e)
             return None
@@ -309,11 +325,17 @@ class _PowerAdminClient:
             pass
 
         # Add specific hints based on the status code
-        if response.status_code == 401:
+        if response.status_code == 400:
+            hint = hint or " (Invalid request)"
+        elif response.status_code == 401:
             hint = hint or " (Is your API key correct?)"
         elif response.status_code == 403:
             hint = hint or " (Does your API key have sufficient permissions?)"
         elif response.status_code == 404:
             hint = hint or " (Zone or record not found)"
+        elif response.status_code == 409:
+            hint = hint or " (Conflicts with an existing record or zone)"
+        elif response.status_code >= 500:
+            hint = hint or " (PowerAdmin API server error)"
 
         return hint
