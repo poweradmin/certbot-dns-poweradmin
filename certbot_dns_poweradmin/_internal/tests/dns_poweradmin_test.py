@@ -237,6 +237,35 @@ class PowerAdminClientTest(TestCase):
 
         self.assertIn("401", str(context.exception))
 
+    def test_add_txt_record_surfaces_api_message(self) -> None:
+        """A non-2xx on create surfaces the API message field in the error."""
+        self._register_zones_response()
+        self._register_records_response()
+        self.adapter.register_uri(
+            "POST",
+            f"{API_URL}/api/{API_VERSION}/zones/1/records",
+            status_code=500,
+            json={"message": "Failed to create record"},
+        )
+
+        with self.assertRaises(errors.PluginError) as context:
+            self.client.add_txt_record(
+                DOMAIN, self.record_name, self.record_content, self.record_ttl
+            )
+
+        self.assertIn("Failed to create record", str(context.exception))
+
+    def test_zone_lookup_server_error_returns_none(self) -> None:
+        """A server error while listing zones is handled gracefully, not as 'not found'."""
+        self.adapter.register_uri(
+            "GET",
+            f"{API_URL}/api/{API_VERSION}/zones",
+            status_code=500,
+            json={"message": "Internal error"},
+        )
+
+        self.assertIsNone(self.client._get_zone_id_by_name("example.com"))
+
     def test_headers_contain_api_key(self) -> None:
         """Test that requests contain the API key header."""
         self._register_zones_response()
