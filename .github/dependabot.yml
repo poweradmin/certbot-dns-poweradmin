@@ -8,6 +8,8 @@ updates:
       day: "thursday"
       time: "14:00"
       timezone: "Europe/Vilnius"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -26,6 +28,8 @@ updates:
       day: "friday"
       time: "15:00"
       timezone: "Europe/Vilnius"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -41,6 +45,8 @@ updates:
       day: "sunday"
       time: "14:00"
       timezone: "Europe/Vilnius"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
     groups:
