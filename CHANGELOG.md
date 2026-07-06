@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.3](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.2...v0.2.3) (2026-07-06)
+
+
+### Bug Fixes
+
+* quote TXT content for API v1, add timeouts, harden response parsing and error reporting ([310e97f](https://github.com/poweradmin/certbot-dns-poweradmin/commit/310e97fc26fab6ea4ee3f0fba6553619e61741ff))
+* reject query/fragment in API URL, accept uppercase api_version, skip boolean zone IDs ([dad6e36](https://github.com/poweradmin/certbot-dns-poweradmin/commit/dad6e361d486734736f215db21ce06f1645c88f2))
+* reject redirects and bad API URLs, skip disabled records, encode record IDs, close session ([6bc1b97](https://github.com/poweradmin/certbot-dns-poweradmin/commit/6bc1b974e5d33cea2ebd91ae0170335e291ac2dd))
+* skip unusable record IDs, escape embedded quotes in TXT content, truncate long API error hints ([a047217](https://github.com/poweradmin/certbot-dns-poweradmin/commit/a047217c6ce1c3096123d375c0e54004ddcaad74))
+* strip control chars from API error hints, validate pre-quoted TXT content, close client after cleanup, distinct 304 error ([8b00f81](https://github.com/poweradmin/certbot-dns-poweradmin/commit/8b00f81e92521aa4cedb09869da4be54f2f3627c))
+
+
+### Documentation
+
+* update compatibility table and API URL troubleshooting in README ([d39650f](https://github.com/poweradmin/certbot-dns-poweradmin/commit/d39650fe30b8af4c98c377377db7187c9e2f7e05))
+
 ## [0.2.2](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.1...v0.2.2) (2026-05-30)
 
 
