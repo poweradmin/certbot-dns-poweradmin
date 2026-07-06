@@ -81,6 +81,39 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
         with self.assertRaises(errors.PluginError):
             auth._get_poweradmin_client()
 
+    def _validate_with_url(self, api_url: str) -> None:
+        auth = Authenticator(self.config, "poweradmin")
+        credentials = mock.MagicMock(
+            conf=lambda key: {
+                "api-url": api_url,
+                "api-key": API_KEY,
+                "api-version": API_VERSION,
+            }[key]
+        )
+        auth._validate_credentials(credentials)
+
+    def test_api_url_without_scheme_is_rejected(self) -> None:
+        """A URL without http(s):// fails at setup, not with a confusing runtime error."""
+        with self.assertRaises(errors.PluginError) as context:
+            self._validate_with_url("poweradmin.example.com")
+        self.assertIn("http", str(context.exception))
+
+    def test_api_url_with_api_path_is_rejected(self) -> None:
+        """A URL already ending in /api (or /api/vN) would 404 on every call."""
+        for url in (
+            f"{API_URL}/api",
+            f"{API_URL}/api/",
+            f"{API_URL}/api/v1",
+            f"{API_URL}/api/v2",
+        ):
+            with self.subTest(url=url), self.assertRaises(errors.PluginError) as context:
+                self._validate_with_url(url)
+            self.assertIn("/api", str(context.exception))
+
+    def test_api_url_with_base_path_is_accepted(self) -> None:
+        """An installation mounted under a path (not /api) validates fine."""
+        self._validate_with_url(f"{API_URL}/poweradmin")
+
 
 class PowerAdminClientTest(TestCase):
     """Tests for _PowerAdminClient class."""
@@ -153,7 +186,7 @@ class PowerAdminClientTest(TestCase):
         """Register a failing response for the zones endpoint."""
         self.adapter.register_uri("GET", f"{API_URL}/api/{API_VERSION}/zones", **kwargs)
 
-    def _register_existing_record(self, content: str, record_id: int = 100) -> None:
+    def _register_existing_record(self, content: str, record_id: int | str = 100) -> None:
         """Register a records listing containing a single TXT record."""
         self._register_records_response(
             records=[{"id": record_id, "name": self.record_name, "type": "TXT", "content": content}]
@@ -485,6 +518,111 @@ class PowerAdminClientTest(TestCase):
             with self.subTest(scenario=name):
                 self._register_zones_failure(**kwargs)
                 self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
+
+    def test_post_redirect_raises_instead_of_silent_success(self) -> None:
+        """A redirected create (e.g. http->https) fails loudly.
+
+        requests would replay the POST as a GET, which returns 200 (the
+        records listing) and would make the plugin report success without
+        ever creating the record.
+        """
+        self._register_zones_response()
+        self._register_records_response()
+        self.adapter.register_uri(
+            "POST",
+            f"{API_URL}/api/{API_VERSION}/zones/1/records",
+            status_code=301,
+            headers={"Location": f"{API_URL}/api/{API_VERSION}/zones/1/records"},
+        )
+
+        message = self._assert_add_raises()
+        self.assertIn("redirected", message)
+        self.assertIn("dns_poweradmin_api_url", message)
+
+    def test_zone_listing_redirect_raises_plugin_error(self) -> None:
+        """A redirect on the zones listing surfaces as itself, not 'zone not found'."""
+        self._register_zones_failure(status_code=302, headers={"Location": "https://elsewhere"})
+
+        message = self._assert_add_raises()
+        self.assertIn("redirected", message)
+        self.assertNotIn("Unable to find", message)
+
+    def test_zone_with_missing_id_falls_through_to_valid_entry(self) -> None:
+        """A matching zone without an ID is skipped, not reported as 'zone not found'."""
+        self._register_zones_response(
+            zones=[{"name": "example.com"}, {"id": 1, "name": "example.com"}]
+        )
+        self._register_records_response()
+        self._register_add_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        post_requests = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 1)
+
+    def test_disabled_record_is_not_treated_as_existing(self) -> None:
+        """A disabled record with matching content does not satisfy the challenge."""
+        self._register_zones_response()
+        self._register_records_response(
+            records=[
+                {
+                    "id": 5,
+                    "name": self.record_name,
+                    "type": "TXT",
+                    "content": self.record_content,
+                    "disabled": True,
+                }
+            ]
+        )
+        self._register_add_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        post_requests = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 1)
+
+    def test_del_ignores_disabled_record(self) -> None:
+        """Cleanup does not delete a disabled record it did not create."""
+        self._register_zones_response()
+        self._register_records_response(
+            records=[
+                {
+                    "id": 5,
+                    "name": self.record_name,
+                    "type": "TXT",
+                    "content": self.record_content,
+                    "disabled": True,
+                }
+            ]
+        )
+
+        self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
+
+        delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
+        self.assertEqual(len(delete_requests), 0)
+
+    def test_string_record_id_is_url_encoded(self) -> None:
+        """A string record ID with reserved characters is quoted in the DELETE URL."""
+        self._register_zones_response()
+        self._register_existing_record(self.record_content, record_id="rec/1?x")
+        self.adapter.register_uri(
+            "DELETE",
+            f"{API_URL}/api/{API_VERSION}/zones/1/records/rec%2F1%3Fx",
+            status_code=204,
+        )
+
+        self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
+
+        delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
+        self.assertEqual(len(delete_requests), 1)
+        self.assertIn("rec%2F1%3Fx", delete_requests[0].url)
+
+    def test_close_closes_session(self) -> None:
+        """close() shuts down the underlying HTTP session."""
+        client = _PowerAdminClient(API_URL, API_KEY, API_VERSION)
+        client.session = mock.MagicMock()
+        client.close()
+        client.session.close.assert_called_once()
 
     def test_zones_api_v1_flat_format(self) -> None:
         """Test handling of API v1 flat zones response format."""

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import quote, urlparse
 
 import requests
 from certbot import errors
@@ -62,12 +64,29 @@ class Authenticator(dns_common.DNSAuthenticator):
 
         if not api_url:
             raise errors.PluginError("PowerAdmin API URL is required (dns_poweradmin_api_url)")
+        self._validate_api_url(api_url)
         if not api_key:
             raise errors.PluginError("PowerAdmin API key is required (dns_poweradmin_api_key)")
         if api_version and api_version not in SUPPORTED_API_VERSIONS:
             raise errors.PluginError(
                 f"Invalid API version: {api_version}. "
                 f"Supported versions: {', '.join(SUPPORTED_API_VERSIONS)}"
+            )
+
+    @staticmethod
+    def _validate_api_url(api_url: str) -> None:
+        parsed = urlparse(api_url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise errors.PluginError(
+                f"PowerAdmin API URL must start with http:// or https:// (got: {api_url})"
+            )
+        # The client appends /api/<version>/... itself; a URL that already
+        # ends in /api (or /api/v1, /api/v2) would silently 404 on every call.
+        path = parsed.path.rstrip("/")
+        if path.endswith(("/api", "/api/v1", "/api/v2")):
+            raise errors.PluginError(
+                f"PowerAdmin API URL must be the base URL of your installation, "
+                f"without the /api path (got: {api_url})"
             )
 
     def _perform(self, domain: str, validation_name: str, validation: str) -> None:
@@ -113,6 +132,23 @@ class _PowerAdminClient:
             }
         )
 
+    def close(self) -> None:
+        """Close the underlying HTTP session."""
+        self.session.close()
+
+    def __del__(self) -> None:
+        with contextlib.suppress(Exception):
+            self.close()
+
+    def _endpoint(self, *segments: object) -> str:
+        """Build an API URL, percent-encoding each path segment.
+
+        Zone and record IDs may be strings (depending on the PowerAdmin
+        backend), so they cannot be interpolated into the path verbatim.
+        """
+        path = "/".join(quote(str(segment), safe="") for segment in segments)
+        return f"{self.api_url}/api/{self.api_version}/{path}"
+
     def add_txt_record(
         self, domain: str, record_name: str, record_content: str, record_ttl: int
     ) -> None:
@@ -143,7 +179,7 @@ class _PowerAdminClient:
             "ttl": record_ttl,
         }
 
-        url = f"{self.api_url}/api/{self.api_version}/zones/{zone_id}/records"
+        url = self._endpoint("zones", zone_id, "records")
         self._request("POST", url, json=record_data)
         logger.debug("Successfully added TXT record for %s", record_name)
 
@@ -171,7 +207,7 @@ class _PowerAdminClient:
                 logger.warning("Record found but has no ID, cannot delete")
                 return
 
-            url = f"{self.api_url}/api/{self.api_version}/zones/{zone_id}/records/{record_id}"
+            url = self._endpoint("zones", zone_id, "records", record_id)
             self._request("DELETE", url)
             logger.debug("Successfully deleted TXT record for %s", record_name)
 
@@ -183,12 +219,26 @@ class _PowerAdminClient:
     def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         """Send an API request, translating failures into PluginError.
 
+        Redirects are not followed: requests would replay a redirected POST
+        as a GET (e.g. on an http:// URL that redirects to https://), turning
+        a failed record creation into a silent success.
+
         Raises:
-            errors.PluginError: On HTTP error statuses (with a hint extracted
-                from the response) or connection-level failures.
+            errors.PluginError: On redirects, HTTP error statuses (with a
+                hint extracted from the response) or connection-level
+                failures.
         """
         try:
-            response = self.session.request(method, url, timeout=API_TIMEOUT, **kwargs)
+            response = self.session.request(
+                method, url, timeout=API_TIMEOUT, allow_redirects=False, **kwargs
+            )
+            if 300 <= response.status_code < 400:
+                location = response.headers.get("Location", "<no Location header>")
+                raise errors.PluginError(
+                    f"PowerAdmin API redirected {method} {url} to {location}. "
+                    "Set dns_poweradmin_api_url to the final URL "
+                    "(e.g. use https:// directly)."
+                )
             response.raise_for_status()
             return response
         except requests.exceptions.HTTPError as e:
@@ -223,7 +273,7 @@ class _PowerAdminClient:
             raise errors.PluginError(f"Unexpected response format from PowerAdmin API: {url}")
         return [item for item in items if isinstance(item, dict)]
 
-    def _find_zone_id(self, domain: str) -> tuple[int | None, str | None]:
+    def _find_zone_id(self, domain: str) -> tuple[int | str | None, str | None]:
         """Find the zone ID for a given domain.
 
         Args:
@@ -232,23 +282,32 @@ class _PowerAdminClient:
         Returns:
             Tuple of (zone_id, zone_name) or (None, None) if not found.
         """
-        url = f"{self.api_url}/api/{self.api_version}/zones"
-        zones = self._fetch_items(url, "zones")
+        zones = self._fetch_items(self._endpoint("zones"), "zones")
 
         for zone_name in dns_common.base_domain_name_guesses(domain):
             for zone in zones:
                 stored_name = zone.get("name")
-                if isinstance(stored_name, str) and self._names_equal(stored_name, zone_name):
-                    zone_id: int | None = zone.get("id")
-                    logger.debug("Found zone %s with ID %s", zone_name, zone_id)
-                    return zone_id, zone_name
+                if not isinstance(stored_name, str) or not self._names_equal(
+                    stored_name, zone_name
+                ):
+                    continue
+                zone_id = zone.get("id")
+                if not isinstance(zone_id, (int, str)):
+                    logger.warning("Zone %s matched but has no usable ID, skipping", zone_name)
+                    continue
+                logger.debug("Found zone %s with ID %s", zone_name, zone_id)
+                return zone_id, zone_name
 
         return None, None
 
     def _find_txt_record(
-        self, zone_id: int, record_name: str, record_content: str
+        self, zone_id: int | str, record_name: str, record_content: str
     ) -> dict[str, Any] | None:
         """Find a specific TXT record in a zone.
+
+        Disabled records are ignored: this plugin only creates enabled
+        records, and a disabled record does not serve the challenge, so
+        treating one as "already exists" would break validation.
 
         Args:
             zone_id: The zone ID to search in.
@@ -258,11 +317,14 @@ class _PowerAdminClient:
         Returns:
             The record dict if found, None otherwise.
         """
-        url = f"{self.api_url}/api/{self.api_version}/zones/{zone_id}/records"
-        records = self._fetch_items(url, "records")
+        records = self._fetch_items(self._endpoint("zones", zone_id, "records"), "records")
 
         for record in records:
             if record.get("type") != "TXT":
+                continue
+
+            if record.get("disabled"):
+                logger.debug("Ignoring disabled TXT record for %s", record.get("name"))
                 continue
 
             stored_name = record.get("name")
