@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest import TestCase, main, mock
 
+import requests
 import requests_mock
 from certbot import errors
 from certbot.compat import os
@@ -12,6 +14,7 @@ from certbot.plugins.dns_test_common import DOMAIN
 from certbot.tests import util as test_util
 
 from certbot_dns_poweradmin import Authenticator
+from certbot_dns_poweradmin._internal import dns_poweradmin
 from certbot_dns_poweradmin._internal.dns_poweradmin import _PowerAdminClient
 
 API_URL = "https://poweradmin.example.com"
@@ -58,6 +61,25 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
         self.auth.cleanup([self.achall])
         expected = [mock.call.del_txt_record(DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY)]
         self.assertEqual(expected, self.mock_client.mock_calls)
+
+    def test_client_is_cached(self) -> None:
+        """The API client (and its session) is created once and reused."""
+        auth = Authenticator(self.config, "poweradmin")
+        auth.credentials = mock.MagicMock(
+            conf=lambda key: {
+                "api-url": API_URL,
+                "api-key": API_KEY,
+                "api-version": API_VERSION,
+            }[key]
+        )
+        self.assertIs(auth._get_poweradmin_client(), auth._get_poweradmin_client())
+
+    def test_missing_credentials_raise_plugin_error(self) -> None:
+        """Missing URL/key raise an explicit error (asserts would vanish under -O)."""
+        auth = Authenticator(self.config, "poweradmin")
+        auth.credentials = mock.MagicMock(conf=lambda key: None)
+        with self.assertRaises(errors.PluginError):
+            auth._get_poweradmin_client()
 
 
 class PowerAdminClientTest(TestCase):
@@ -127,6 +149,24 @@ class PowerAdminClientTest(TestCase):
             status_code=status_code,
         )
 
+    def _register_zones_failure(self, **kwargs: Any) -> None:
+        """Register a failing response for the zones endpoint."""
+        self.adapter.register_uri("GET", f"{API_URL}/api/{API_VERSION}/zones", **kwargs)
+
+    def _register_existing_record(self, content: str, record_id: int = 100) -> None:
+        """Register a records listing containing a single TXT record."""
+        self._register_records_response(
+            records=[{"id": record_id, "name": self.record_name, "type": "TXT", "content": content}]
+        )
+
+    def _assert_add_raises(self) -> str:
+        """Run add_txt_record, assert it raises PluginError, return the message."""
+        with self.assertRaises(errors.PluginError) as context:
+            self.client.add_txt_record(
+                DOMAIN, self.record_name, self.record_content, self.record_ttl
+            )
+        return str(context.exception)
+
     def test_add_txt_record(self) -> None:
         """Test adding a TXT record."""
         self._register_zones_response()
@@ -140,59 +180,78 @@ class PowerAdminClientTest(TestCase):
         post_request = [r for r in history if r.method == "POST"][0]
         self.assertIn("TXT", post_request.text)
 
+    def test_add_txt_record_sends_quoted_content(self) -> None:
+        """TXT content is quoted in the POST body (required by API v1)."""
+        self._register_zones_response()
+        self._register_records_response()
+        self._register_add_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        post_request = [r for r in self.adapter.request_history if r.method == "POST"][0]
+        self.assertEqual(post_request.json()["content"], f'"{self.record_content}"')
+
+    def test_add_txt_record_does_not_double_quote(self) -> None:
+        """Already-quoted content is not quoted again."""
+        self._register_zones_response()
+        self._register_records_response()
+        self._register_add_record_response()
+
+        quoted = f'"{self.record_content}"'
+        self.client.add_txt_record(DOMAIN, self.record_name, quoted, self.record_ttl)
+
+        post_request = [r for r in self.adapter.request_history if r.method == "POST"][0]
+        self.assertEqual(post_request.json()["content"], quoted)
+
+    def test_add_txt_record_already_exists_quoted_in_api(self) -> None:
+        """Idempotency check matches when the API returns quoted content (v1 format)."""
+        self._register_zones_response()
+        self._register_existing_record(f'"{self.record_content}"', record_id=50)
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        post_requests = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 0)
+
+    def test_del_txt_record_quoted_in_api(self) -> None:
+        """Delete finds the record when the API returns quoted content (v1 format)."""
+        self._register_zones_response()
+        self._register_existing_record(f'"{self.record_content}"')
+        self._register_delete_record_response()
+
+        self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
+
+        delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
+        self.assertEqual(len(delete_requests), 1)
+
     def test_add_txt_record_already_exists(self) -> None:
         """Test adding a TXT record that already exists."""
         self._register_zones_response()
-        self._register_records_response(
-            records=[
-                {
-                    "id": 50,
-                    "name": self.record_name,
-                    "type": "TXT",
-                    "content": self.record_content,
-                }
-            ]
-        )
+        self._register_existing_record(self.record_content, record_id=50)
 
         # Should not raise, should just return (idempotent)
         self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
 
         # Verify no POST request was made
-        history = self.adapter.request_history
-        post_requests = [r for r in history if r.method == "POST"]
+        post_requests = [r for r in self.adapter.request_history if r.method == "POST"]
         self.assertEqual(len(post_requests), 0)
 
     def test_add_txt_record_zone_not_found(self) -> None:
         """Test adding a TXT record when a zone is not found."""
         self._register_zones_response(zones=[])
 
-        with self.assertRaises(errors.PluginError) as context:
-            self.client.add_txt_record(
-                DOMAIN, self.record_name, self.record_content, self.record_ttl
-            )
-
-        self.assertIn("Unable to find", str(context.exception))
+        self.assertIn("Unable to find", self._assert_add_raises())
 
     def test_del_txt_record(self) -> None:
         """Test deleting a TXT record."""
         self._register_zones_response()
-        self._register_records_response(
-            records=[
-                {
-                    "id": 100,
-                    "name": self.record_name,
-                    "type": "TXT",
-                    "content": self.record_content,
-                }
-            ]
-        )
+        self._register_existing_record(self.record_content)
         self._register_delete_record_response()
 
         self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
 
         # Verify the DELETE request was made
-        history = self.adapter.request_history
-        delete_requests = [r for r in history if r.method == "DELETE"]
+        delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
         self.assertEqual(len(delete_requests), 1)
 
     def test_del_txt_record_not_found(self) -> None:
@@ -210,6 +269,32 @@ class PowerAdminClientTest(TestCase):
         # Should not raise (graceful cleanup)
         self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
 
+    def test_find_zone_case_insensitive(self) -> None:
+        """A mixed-case zone name in PowerAdmin still matches (DNS is case-insensitive)."""
+        self._register_zones_response(zones=[{"id": 1, "name": "Example.COM."}])
+        self._register_records_response()
+        self._register_add_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        post_requests = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 1)
+
+    def test_error_hint_with_non_string_message_falls_back(self) -> None:
+        """A dict-valued error field falls back to the status-code hint."""
+        self._register_zones_response()
+        self._register_records_response()
+        self.adapter.register_uri(
+            "POST",
+            f"{API_URL}/api/{API_VERSION}/zones/1/records",
+            status_code=500,
+            json={"error": {"code": 1}},
+        )
+
+        message = self._assert_add_raises()
+        self.assertIn("PowerAdmin API server error", message)
+        self.assertNotIn("code", message)
+
     def test_find_zone_with_trailing_dot(self) -> None:
         """Test finding a zone when API returns name with trailing dot."""
         self._register_zones_response(zones=[{"id": 1, "name": "example.com."}])
@@ -218,6 +303,19 @@ class PowerAdminClientTest(TestCase):
 
         # Should find the zone despite trailing dot
         self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+    def test_find_zone_with_absolute_domain(self) -> None:
+        """An absolute domain (trailing dot) still matches a dot-less stored zone."""
+        self._register_zones_response()
+        self._register_records_response()
+        self._register_add_record_response()
+
+        self.client.add_txt_record(
+            DOMAIN + ".", self.record_name, self.record_content, self.record_ttl
+        )
+
+        post_requests = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 1)
 
     def test_api_error_handling(self) -> None:
         """Test API error handling."""
@@ -230,12 +328,7 @@ class PowerAdminClientTest(TestCase):
             json={"message": "Invalid API key"},
         )
 
-        with self.assertRaises(errors.PluginError) as context:
-            self.client.add_txt_record(
-                DOMAIN, self.record_name, self.record_content, self.record_ttl
-            )
-
-        self.assertIn("401", str(context.exception))
+        self.assertIn("401", self._assert_add_raises())
 
     def test_add_txt_record_surfaces_api_message(self) -> None:
         """A non-2xx on create surfaces the API message field in the error."""
@@ -248,30 +341,51 @@ class PowerAdminClientTest(TestCase):
             json={"message": "Failed to create record"},
         )
 
-        with self.assertRaises(errors.PluginError) as context:
-            self.client.add_txt_record(
-                DOMAIN, self.record_name, self.record_content, self.record_ttl
-            )
+        self.assertIn("Failed to create record", self._assert_add_raises())
 
-        self.assertIn("Failed to create record", str(context.exception))
+    def test_zone_lookup_server_error_raises_plugin_error(self) -> None:
+        """A server error while listing zones surfaces as itself, not as 'zone not found'."""
+        self._register_zones_failure(status_code=500, json={"message": "Internal error"})
 
-    def test_zone_lookup_server_error_returns_none(self) -> None:
-        """A server error while listing zones is handled gracefully, not as 'not found'."""
-        self.adapter.register_uri(
-            "GET",
-            f"{API_URL}/api/{API_VERSION}/zones",
-            status_code=500,
-            json={"message": "Internal error"},
-        )
+        message = self._assert_add_raises()
+        self.assertIn("Internal error", message)
+        self.assertNotIn("Unable to find", message)
 
-        self.assertIsNone(self.client._get_zone_id_by_name("example.com"))
+    def test_zone_lookup_auth_error_mentions_api_key(self) -> None:
+        """A 401 while listing zones points at the API key, not at zone config."""
+        self._register_zones_failure(status_code=401, json={})
+
+        message = self._assert_add_raises()
+        self.assertIn("Is your API key correct?", message)
+        self.assertNotIn("Unable to find", message)
+
+    def test_zone_lookup_connection_error_raises_plugin_error(self) -> None:
+        """Connection-level failures surface as communication errors, not 'zone not found'."""
+        for exc in (requests.exceptions.ConnectionError, requests.exceptions.ConnectTimeout):
+            with self.subTest(exc=exc.__name__):
+                self._register_zones_failure(exc=exc)
+                self.assertIn("Error communicating with PowerAdmin API", self._assert_add_raises())
+
+    def test_requests_use_timeout(self) -> None:
+        """Every API request carries a timeout so renewals cannot hang forever."""
+        self._register_zones_response()
+        self._register_records_response()
+        self._register_add_record_response()
+        self._register_delete_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+        self._register_existing_record(self.record_content)
+        self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
+
+        for request in self.adapter.request_history:
+            self.assertEqual(request.timeout, dns_poweradmin.API_TIMEOUT, request.url)
 
     def test_headers_contain_api_key(self) -> None:
         """Test that requests contain the API key header."""
         self._register_zones_response()
 
         # Trigger a request
-        self.client._get_zone_id_by_name("example.com")
+        self.client._find_zone_id(DOMAIN)
 
         # Verify headers
         history = self.adapter.request_history
@@ -319,6 +433,58 @@ class PowerAdminClientTest(TestCase):
         history = self.adapter.request_history
         delete_requests = [r for r in history if r.method == "DELETE"]
         self.assertEqual(len(delete_requests), 1)
+
+    def test_zone_with_null_name_is_skipped(self) -> None:
+        """A zone entry with a null name is skipped instead of crashing."""
+        self._register_zones_response(
+            zones=[{"id": 2, "name": None}, {"id": 1, "name": "example.com"}]
+        )
+        self._register_records_response()
+        self._register_add_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+    def test_unexpected_zones_envelope_raises_plugin_error(self) -> None:
+        """A data envelope without a zones list raises PluginError, not AttributeError."""
+        self._register_zones_failure(json={"data": {"message": "something", "success": True}})
+
+        self.assertIn("Unexpected response format", self._assert_add_raises())
+
+    def test_non_list_payload_raises_plugin_error(self) -> None:
+        """A completely unexpected payload type raises PluginError."""
+        self._register_zones_failure(json="unexpected")
+
+        self._assert_add_raises()
+
+    def test_record_with_null_content_is_skipped(self) -> None:
+        """A record entry with null content is skipped instead of crashing."""
+        self._register_zones_response()
+        self._register_records_response(
+            records=[
+                {"id": 5, "name": self.record_name, "type": "TXT", "content": None},
+                {"id": 6, "name": None, "type": "TXT", "content": self.record_content},
+            ]
+        )
+        self._register_add_record_response()
+
+        # Neither malformed record matches, so a new record is created
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        post_requests = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(post_requests), 1)
+
+    def test_cleanup_swallows_api_failures(self) -> None:
+        """Cleanup never raises, whatever the API failure mode."""
+        scenarios: list[tuple[str, dict]] = [
+            ("auth error", {"status_code": 401, "json": {}}),
+            ("timeout", {"exc": requests.exceptions.ConnectTimeout}),
+            ("malformed zone entry", {"json": {"data": {"zones": [{"id": 1, "name": None}]}}}),
+            ("unexpected envelope", {"json": {"data": {"message": "something"}}}),
+        ]
+        for name, kwargs in scenarios:
+            with self.subTest(scenario=name):
+                self._register_zones_failure(**kwargs)
+                self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
 
     def test_zones_api_v1_flat_format(self) -> None:
         """Test handling of API v1 flat zones response format."""

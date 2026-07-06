@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_API_VERSION = "v2"
 SUPPORTED_API_VERSIONS = ("v1", "v2")
+API_TIMEOUT = 30  # seconds; keeps unattended renewals from hanging on a stalled API
 
 
 class Authenticator(dns_common.DNSAuthenticator):
@@ -31,6 +32,7 @@ class Authenticator(dns_common.DNSAuthenticator):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.credentials: CredentialsConfiguration | None = None
+        self._client: _PowerAdminClient | None = None
 
     @classmethod
     def add_parser_arguments(
@@ -78,19 +80,21 @@ class Authenticator(dns_common.DNSAuthenticator):
         if self.credentials is None:
             raise errors.PluginError("Credentials not configured")
 
-        api_url = self.credentials.conf("api-url")
-        api_key = self.credentials.conf("api-key")
-        api_version = self.credentials.conf("api-version") or DEFAULT_API_VERSION
+        if self._client is None:
+            api_url = self.credentials.conf("api-url")
+            api_key = self.credentials.conf("api-key")
+            api_version = self.credentials.conf("api-version") or DEFAULT_API_VERSION
 
-        # These are validated in _validate_credentials, so they should never be None
-        assert api_url is not None
-        assert api_key is not None
+            # Already checked in _validate_credentials; explicit so `python -O` stays safe
+            if not api_url or not api_key:
+                raise errors.PluginError("PowerAdmin API URL and API key are required")
 
-        return _PowerAdminClient(
-            api_url=api_url,
-            api_key=api_key,
-            api_version=api_version,
-        )
+            self._client = _PowerAdminClient(
+                api_url=api_url,
+                api_key=api_key,
+                api_version=api_version,
+            )
+        return self._client
 
 
 class _PowerAdminClient:
@@ -130,24 +134,18 @@ class _PowerAdminClient:
             logger.debug("TXT record already exists, skipping creation")
             return
 
-        # Create the TXT record
+        # Create the TXT record. Content must be quoted: API v1 rejects unquoted
+        # TXT content, while v2 accepts either and quotes server-side.
         record_data = {
             "name": record_name,
             "type": "TXT",
-            "content": record_content,
+            "content": self._quote_txt_content(record_content),
             "ttl": record_ttl,
         }
 
         url = f"{self.api_url}/api/{self.api_version}/zones/{zone_id}/records"
-        try:
-            response = self.session.post(url, json=record_data)
-            response.raise_for_status()
-            logger.debug("Successfully added TXT record for %s", record_name)
-        except requests.exceptions.HTTPError as e:
-            hint = self._get_error_hint(e.response)
-            raise errors.PluginError(f"Error adding TXT record: {e}{hint}") from e
-        except requests.exceptions.RequestException as e:
-            raise errors.PluginError(f"Error communicating with PowerAdmin API: {e}") from e
+        self._request("POST", url, json=record_data)
+        logger.debug("Successfully added TXT record for %s", record_name)
 
     def del_txt_record(self, domain: str, record_name: str, record_content: str) -> None:
         """Delete a TXT record using the PowerAdmin API.
@@ -174,12 +172,56 @@ class _PowerAdminClient:
                 return
 
             url = f"{self.api_url}/api/{self.api_version}/zones/{zone_id}/records/{record_id}"
-            response = self.session.delete(url)
-            response.raise_for_status()
+            self._request("DELETE", url)
             logger.debug("Successfully deleted TXT record for %s", record_name)
 
-        except requests.exceptions.RequestException as e:
+        except errors.PluginError as e:
+            # Cleanup is best-effort: _request/_fetch_items translate all API
+            # failures into PluginError, so this catches every failure mode.
             logger.warning("Error deleting TXT record during cleanup: %s", e)
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        """Send an API request, translating failures into PluginError.
+
+        Raises:
+            errors.PluginError: On HTTP error statuses (with a hint extracted
+                from the response) or connection-level failures.
+        """
+        try:
+            response = self.session.request(method, url, timeout=API_TIMEOUT, **kwargs)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.HTTPError as e:
+            hint = self._get_error_hint(e.response)
+            raise errors.PluginError(f"PowerAdmin API error: {e}{hint}") from e
+        except requests.exceptions.RequestException as e:
+            raise errors.PluginError(f"Error communicating with PowerAdmin API: {e}") from e
+
+    def _fetch_items(self, url: str, key: str) -> list[dict[str, Any]]:
+        """GET a listing endpoint and unwrap the response envelope.
+
+        Handles both the v1 format ({"data": [...]}) and the v2 format
+        ({"data": {key: [...]}}), skipping any malformed (non-dict) entries.
+
+        Raises:
+            errors.PluginError: On API failures or if the payload has an
+                unexpected shape. Auth and connectivity problems must surface
+                as themselves, not be mistaken for "zone not found".
+        """
+        response = self._request("GET", url)
+        try:
+            items: Any = response.json()
+        except requests.exceptions.JSONDecodeError as e:
+            raise errors.PluginError(
+                f"Unexpected response format from PowerAdmin API: {url}"
+            ) from e
+        if isinstance(items, dict) and "data" in items:
+            items = items["data"]
+            if isinstance(items, dict) and key in items:
+                items = items[key]
+        if not isinstance(items, list):
+            raise errors.PluginError(f"Unexpected response format from PowerAdmin API: {url}")
+        return [item for item in items if isinstance(item, dict)]
 
     def _find_zone_id(self, domain: str) -> tuple[int | None, str | None]:
         """Find the zone ID for a given domain.
@@ -190,60 +232,18 @@ class _PowerAdminClient:
         Returns:
             Tuple of (zone_id, zone_name) or (None, None) if not found.
         """
-        zone_name_guesses = dns_common.base_domain_name_guesses(domain)
+        url = f"{self.api_url}/api/{self.api_version}/zones"
+        zones = self._fetch_items(url, "zones")
 
-        for zone_name in zone_name_guesses:
-            logger.debug("Looking for zone: %s", zone_name)
-            zone_id = self._get_zone_id_by_name(zone_name)
-            if zone_id is not None:
-                logger.debug("Found zone %s with ID %s", zone_name, zone_id)
-                return zone_id, zone_name
+        for zone_name in dns_common.base_domain_name_guesses(domain):
+            for zone in zones:
+                stored_name = zone.get("name")
+                if isinstance(stored_name, str) and self._names_equal(stored_name, zone_name):
+                    zone_id: int | None = zone.get("id")
+                    logger.debug("Found zone %s with ID %s", zone_name, zone_id)
+                    return zone_id, zone_name
 
         return None, None
-
-    def _get_zone_id_by_name(self, zone_name: str) -> int | None:
-        """Get zone ID by zone name from PowerAdmin API.
-
-        Args:
-            zone_name: The zone name to look up.
-
-        Returns:
-            The zone ID if found, None otherwise.
-        """
-        url = f"{self.api_url}/api/{self.api_version}/zones"
-        try:
-            response = self.session.get(url)
-            response.raise_for_status()
-            zones = response.json()
-
-            # Handle various response formats from PowerAdmin API
-            if isinstance(zones, dict) and "data" in zones:
-                zones = zones["data"]
-                # API v2 returns {"data": {"zones": [...]}}
-                if isinstance(zones, dict) and "zones" in zones:
-                    zones = zones["zones"]
-
-            for zone in zones:
-                # Zone name might be stored with or without a trailing dot
-                zone_stored_name = zone.get("name", "").rstrip(".")
-                if zone_stored_name == zone_name or zone_stored_name == zone_name.rstrip("."):
-                    zone_id: int | None = zone.get("id")
-                    return zone_id
-
-            return None
-
-        except requests.exceptions.HTTPError as e:
-            # A real API failure (auth or server error) must be visible, not
-            # silently treated as "zone not found".
-            logger.warning(
-                "PowerAdmin API error fetching zones: %s%s",
-                e,
-                self._get_error_hint(e.response),
-            )
-            return None
-        except requests.exceptions.RequestException as e:
-            logger.debug("Error fetching zones: %s", e)
-            return None
 
     def _find_txt_record(
         self, zone_id: int, record_name: str, record_content: str
@@ -259,46 +259,46 @@ class _PowerAdminClient:
             The record dict if found, None otherwise.
         """
         url = f"{self.api_url}/api/{self.api_version}/zones/{zone_id}/records"
-        try:
-            response = self.session.get(url)
-            response.raise_for_status()
-            records = response.json()
+        records = self._fetch_items(url, "records")
 
-            # Handle various response formats from PowerAdmin API
-            if isinstance(records, dict) and "data" in records:
-                records = records["data"]
-                # API v2 returns {"data": {"records": [...]}}
-                if isinstance(records, dict) and "records" in records:
-                    records = records["records"]
+        for record in records:
+            if record.get("type") != "TXT":
+                continue
 
-            for record in records:
-                if record.get("type") != "TXT":
-                    continue
+            stored_name = record.get("name")
+            stored_content = record.get("content")
+            if not isinstance(stored_name, str) or not isinstance(stored_content, str):
+                continue
 
-                # Compare record name (with or without a trailing dot)
-                stored_name = record.get("name", "").rstrip(".")
-                target_name = record_name.rstrip(".")
-                if stored_name != target_name:
-                    continue
+            if not self._names_equal(stored_name, record_name):
+                continue
 
-                # Compare content (may be quoted in API response)
-                stored_content = record.get("content", "").strip('"')
-                if stored_content == record_content:
-                    result: dict[str, Any] = record
-                    return result
+            # Content may be quoted in the API response (v1) or by the caller
+            if self._unquote_txt_content(stored_content) == self._unquote_txt_content(
+                record_content
+            ):
+                return record
 
-            return None
+        return None
 
-        except requests.exceptions.HTTPError as e:
-            logger.warning(
-                "PowerAdmin API error fetching records: %s%s",
-                e,
-                self._get_error_hint(e.response),
-            )
-            return None
-        except requests.exceptions.RequestException as e:
-            logger.debug("Error fetching records: %s", e)
-            return None
+    @staticmethod
+    def _names_equal(name_a: str, name_b: str) -> bool:
+        """Compare DNS names case-insensitively, ignoring any trailing dot."""
+        return name_a.rstrip(".").lower() == name_b.rstrip(".").lower()
+
+    @staticmethod
+    def _quote_txt_content(content: str) -> str:
+        """Wrap TXT record content in double quotes if not already quoted."""
+        if content.startswith('"') and content.endswith('"') and len(content) >= 2:
+            return content
+        return f'"{content}"'
+
+    @staticmethod
+    def _unquote_txt_content(content: str) -> str:
+        """Strip the double quotes added by _quote_txt_content, if present."""
+        if content.startswith('"') and content.endswith('"') and len(content) >= 2:
+            return content[1:-1]
+        return content
 
     @staticmethod
     def _get_error_hint(response: requests.Response | None) -> str:
@@ -318,7 +318,7 @@ class _PowerAdminClient:
             error_data = response.json()
             if isinstance(error_data, dict):
                 message = error_data.get("message") or error_data.get("error")
-                if message:
+                if isinstance(message, str) and message:
                     hint = f" ({message})"
         except (ValueError, KeyError):
             # Malformed or non-JSON body; fall back to status-code hints below.
