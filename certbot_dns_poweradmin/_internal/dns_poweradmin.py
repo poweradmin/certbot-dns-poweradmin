@@ -67,7 +67,7 @@ class Authenticator(dns_common.DNSAuthenticator):
         self._validate_api_url(api_url)
         if not api_key:
             raise errors.PluginError("PowerAdmin API key is required (dns_poweradmin_api_key)")
-        if api_version and api_version not in SUPPORTED_API_VERSIONS:
+        if api_version and api_version.lower() not in SUPPORTED_API_VERSIONS:
             raise errors.PluginError(
                 f"Invalid API version: {api_version}. "
                 f"Supported versions: {', '.join(SUPPORTED_API_VERSIONS)}"
@@ -79,6 +79,12 @@ class Authenticator(dns_common.DNSAuthenticator):
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise errors.PluginError(
                 f"PowerAdmin API URL must start with http:// or https:// (got: {api_url})"
+            )
+        # The client appends /api/<version>/... to the URL, so a query string
+        # or fragment would corrupt every request URL it builds.
+        if parsed.query or parsed.fragment:
+            raise errors.PluginError(
+                f"PowerAdmin API URL must not contain a query string or fragment (got: {api_url})"
             )
         # The client appends /api/<version>/... itself; a URL that already
         # ends in /api (or /api/v1, /api/v2) would silently 404 on every call.
@@ -102,7 +108,7 @@ class Authenticator(dns_common.DNSAuthenticator):
         if self._client is None:
             api_url = self.credentials.conf("api-url")
             api_key = self.credentials.conf("api-key")
-            api_version = self.credentials.conf("api-version") or DEFAULT_API_VERSION
+            api_version = (self.credentials.conf("api-version") or DEFAULT_API_VERSION).lower()
 
             # Already checked in _validate_credentials; explicit so `python -O` stays safe
             if not api_url or not api_key:
@@ -292,7 +298,9 @@ class _PowerAdminClient:
                 ):
                     continue
                 zone_id = zone.get("id")
-                if not isinstance(zone_id, (int, str)):
+                # bool is excluded explicitly: it passes isinstance(..., int)
+                # but would produce URLs like zones/True/records.
+                if isinstance(zone_id, bool) or not isinstance(zone_id, (int, str)):
                     logger.warning("Zone %s matched but has no usable ID, skipping", zone_name)
                     continue
                 logger.debug("Found zone %s with ID %s", zone_name, zone_id)

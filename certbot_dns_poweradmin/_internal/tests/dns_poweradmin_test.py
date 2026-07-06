@@ -114,6 +114,27 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
         """An installation mounted under a path (not /api) validates fine."""
         self._validate_with_url(f"{API_URL}/poweradmin")
 
+    def test_api_url_with_query_or_fragment_is_rejected(self) -> None:
+        """A query string or fragment would corrupt every request URL."""
+        for url in (f"{API_URL}?foo=1", f"{API_URL}/#section"):
+            with self.subTest(url=url), self.assertRaises(errors.PluginError) as context:
+                self._validate_with_url(url)
+            self.assertIn("query string or fragment", str(context.exception))
+
+    def test_api_version_is_case_insensitive(self) -> None:
+        """An uppercase api_version (e.g. V1) validates and reaches the client lowercased."""
+        auth = Authenticator(self.config, "poweradmin")
+        credentials = mock.MagicMock(
+            conf=lambda key: {
+                "api-url": API_URL,
+                "api-key": API_KEY,
+                "api-version": "V1",
+            }[key]
+        )
+        auth._validate_credentials(credentials)
+        auth.credentials = credentials
+        self.assertEqual(auth._get_poweradmin_client().api_version, "v1")
+
 
 class PowerAdminClientTest(TestCase):
     """Tests for _PowerAdminClient class."""
@@ -548,9 +569,13 @@ class PowerAdminClientTest(TestCase):
         self.assertNotIn("Unable to find", message)
 
     def test_zone_with_missing_id_falls_through_to_valid_entry(self) -> None:
-        """A matching zone without an ID is skipped, not reported as 'zone not found'."""
+        """A matching zone without a usable ID is skipped, not reported as 'zone not found'."""
         self._register_zones_response(
-            zones=[{"name": "example.com"}, {"id": 1, "name": "example.com"}]
+            zones=[
+                {"name": "example.com"},
+                {"id": True, "name": "example.com"},
+                {"id": 1, "name": "example.com"},
+            ]
         )
         self._register_records_response()
         self._register_add_record_response()
@@ -620,9 +645,10 @@ class PowerAdminClientTest(TestCase):
     def test_close_closes_session(self) -> None:
         """close() shuts down the underlying HTTP session."""
         client = _PowerAdminClient(API_URL, API_KEY, API_VERSION)
-        client.session = mock.MagicMock()
-        client.close()
-        client.session.close.assert_called_once()
+        with mock.patch.object(client.session, "close") as mock_close:
+            client.close()
+        mock_close.assert_called_once()
+        client.close()  # close the real session so the test does not leak it
 
     def test_zones_api_v1_flat_format(self) -> None:
         """Test handling of API v1 flat zones response format."""
