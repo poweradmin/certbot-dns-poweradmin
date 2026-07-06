@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import quote, urlparse
 
 import requests
-from certbot import errors
+from certbot import achallenges, errors
 from certbot.plugins import dns_common
 from certbot.plugins.dns_common import CredentialsConfiguration
 
@@ -20,6 +20,10 @@ DEFAULT_API_VERSION = "v2"
 SUPPORTED_API_VERSIONS = ("v1", "v2")
 API_TIMEOUT = 30  # seconds; keeps unattended renewals from hanging on a stalled API
 MAX_ERROR_HINT_LENGTH = 200  # characters; keeps API error bodies from flooding the error
+
+# A quoted TXT string whose interior is properly escaped: any embedded
+# double quote or backslash must be preceded by a backslash.
+_QUOTED_TXT_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
 
 
 class Authenticator(dns_common.DNSAuthenticator):
@@ -102,6 +106,16 @@ class Authenticator(dns_common.DNSAuthenticator):
 
     def _cleanup(self, domain: str, validation_name: str, validation: str) -> None:
         self._get_poweradmin_client().del_txt_record(domain, validation_name, validation)
+
+    def cleanup(self, achalls: list[achallenges.AnnotatedChallenge]) -> None:
+        try:
+            super().cleanup(achalls)
+        finally:
+            # Cleanup is the last API interaction; close the session instead
+            # of relying on __del__. A later call recreates the client.
+            if self._client is not None:
+                self._client.close()
+                self._client = None
 
     def _get_poweradmin_client(self) -> _PowerAdminClient:
         if self.credentials is None:
@@ -242,6 +256,15 @@ class _PowerAdminClient:
             response = self.session.request(
                 method, url, timeout=API_TIMEOUT, allow_redirects=False, **kwargs
             )
+            if response.status_code == 304:
+                # Not a redirect: the plugin sends no conditional headers,
+                # so a 304 means a broken proxy or server. A 304 has no
+                # body, so treating it as success would hide a failure.
+                raise errors.PluginError(
+                    f"PowerAdmin API returned an unexpected 304 Not Modified "
+                    f"for {method} {url}. This usually indicates a broken "
+                    "proxy or cache in front of PowerAdmin."
+                )
             if 300 <= response.status_code < 400:
                 location = response.headers.get("Location", "<no Location header>")
                 raise errors.PluginError(
@@ -364,11 +387,13 @@ class _PowerAdminClient:
     def _quote_txt_content(content: str) -> str:
         """Wrap TXT record content in double quotes if not already quoted.
 
-        Embedded quotes and backslashes are escaped. ACME validation tokens
-        are base64url so certbot never produces them, but the client methods
-        accept arbitrary content.
+        Content counts as already quoted only if its interior is properly
+        escaped; anything else (e.g. 'a"b"c"') is escaped and wrapped as a
+        whole. ACME validation tokens are base64url so certbot never
+        produces content needing escapes, but the client methods accept
+        arbitrary content.
         """
-        if content.startswith('"') and content.endswith('"') and len(content) >= 2:
+        if _QUOTED_TXT_RE.fullmatch(content):
             return content
         escaped = content.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
@@ -376,7 +401,7 @@ class _PowerAdminClient:
     @staticmethod
     def _unquote_txt_content(content: str) -> str:
         """Undo the quoting and escaping added by _quote_txt_content, if present."""
-        if content.startswith('"') and content.endswith('"') and len(content) >= 2:
+        if _QUOTED_TXT_RE.fullmatch(content):
             return re.sub(r"\\(.)", r"\1", content[1:-1])
         return content
 
@@ -398,10 +423,15 @@ class _PowerAdminClient:
             error_data = response.json()
             if isinstance(error_data, dict):
                 message = error_data.get("message") or error_data.get("error")
-                if isinstance(message, str) and message:
+                if isinstance(message, str):
+                    # The hint is echoed to the user's terminal; strip control
+                    # characters (newlines, ANSI escapes) a broken or hostile
+                    # server could embed.
+                    message = re.sub(r"[\x00-\x1f\x7f-\x9f]+", " ", message).strip()
                     if len(message) > MAX_ERROR_HINT_LENGTH:
                         message = message[:MAX_ERROR_HINT_LENGTH] + "..."
-                    hint = f" ({message})"
+                    if message:
+                        hint = f" ({message})"
         except (ValueError, KeyError):
             # Malformed or non-JSON body; fall back to status-code hints below.
             pass

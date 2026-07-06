@@ -62,6 +62,16 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
         expected = [mock.call.del_txt_record(DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY)]
         self.assertEqual(expected, self.mock_client.mock_calls)
 
+    @test_util.patch_display_util()
+    def test_cleanup_closes_client(self, _: mock.MagicMock) -> None:
+        """cleanup() closes the cached client session and drops the reference."""
+        self.auth._attempt_cleanup = True
+        fake_client = mock.MagicMock()
+        self.auth._client = fake_client
+        self.auth.cleanup([self.achall])
+        fake_client.close.assert_called_once()
+        self.assertIsNone(self.auth._client)
+
     def test_client_is_cached(self) -> None:
         """The API client (and its session) is created once and reused."""
         auth = Authenticator(self.config, "poweradmin")
@@ -656,7 +666,7 @@ class PowerAdminClientTest(TestCase):
 
     def test_quote_escapes_embedded_quotes_and_backslashes(self) -> None:
         """Quoting escapes special characters and unquoting round-trips them."""
-        for content in ('a"b', "a\\b", '\\"', "ends with \\", "plain-token"):
+        for content in ('a"b', "a\\b", '\\"', "ends with \\", "plain-token", '"a"b"', '"'):
             with self.subTest(content=content):
                 quoted = _PowerAdminClient._quote_txt_content(content)
                 self.assertTrue(quoted.startswith('"') and quoted.endswith('"'))
@@ -669,6 +679,33 @@ class PowerAdminClientTest(TestCase):
         message = self._assert_add_raises()
         self.assertIn("x" * dns_poweradmin.MAX_ERROR_HINT_LENGTH + "...", message)
         self.assertNotIn("x" * (dns_poweradmin.MAX_ERROR_HINT_LENGTH + 1), message)
+
+    def test_error_hint_strips_control_characters(self) -> None:
+        """ANSI escapes and newlines in an API error body never reach the terminal raw."""
+        self._register_zones_failure(
+            status_code=500, json={"message": "denied\x1b[31m\nby\r\x00policy"}
+        )
+
+        message = self._assert_add_raises()
+        self.assertIn("denied", message)
+        self.assertIn("policy", message)
+        for char in ("\x1b", "\n", "\r", "\x00"):
+            self.assertNotIn(char, message)
+
+    def test_error_hint_with_only_control_characters_falls_back(self) -> None:
+        """A message that is nothing but control characters yields the status hint."""
+        self._register_zones_failure(status_code=500, json={"message": "\x1b\x1b\n"})
+
+        message = self._assert_add_raises()
+        self.assertIn("PowerAdmin API server error", message)
+
+    def test_zone_listing_304_raises_distinct_error(self) -> None:
+        """An impossible 304 fails loudly and is not mislabeled as a redirect."""
+        self._register_zones_failure(status_code=304)
+
+        message = self._assert_add_raises()
+        self.assertIn("304", message)
+        self.assertNotIn("redirected", message)
 
     def test_string_record_id_is_url_encoded(self) -> None:
         """A string record ID with reserved characters is quoted in the DELETE URL."""
