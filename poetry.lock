@@ -1367,9 +1367,9 @@ python-discovery = ">=1.4.2"
 typing-extensions = {version = ">=4.13.2", markers = "python_version < \"3.11\""}
 
 [extras]
-dev = ["mypy", "pytest", "pytest-cov", "requests-mock", "ruff", "tox", "types-requests"]
+dev = ["mypy", "pyopenssl", "pytest", "pytest-cov", "requests-mock", "ruff", "tox", "types-requests", "urllib3"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "b025fc908cca7f247a9a71613d5fbdc409ce051ead26a57d2dc996f024267a03"
+content-hash = "ec4c887703269e8aa42d3b7832e7a2c168e1e1c21b3faf9ff2751112bd311b34"
