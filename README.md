@@ -13,7 +13,7 @@ This plugin automates the process of completing a `dns-01` challenge by creating
 
 | Plugin Version | Poweradmin Version | Python | Certbot |
 |---|---|---|---|
-| 0.2.0 | 4.1.0+ | >= 3.10 | >= 5.1.0 |
+| 0.2.x | 4.1.0+ | >= 3.10 | >= 5.1.0 |
 | 0.1.x | 4.1.0 - 4.2.x | >= 3.10 | >= 5.1.0 |
 
 ## Installation
@@ -150,7 +150,11 @@ certbot plugins  # should show dns-poweradmin
 
 ### API connection issues
 
-- Verify your API URL is correct and accessible
+- Use the base URL of your PowerAdmin installation as `dns_poweradmin_api_url`
+  (e.g. `https://poweradmin.example.com`), including the `https://` scheme and
+  without the `/api` path — the plugin appends `/api/v1` or `/api/v2` itself
+- The URL must not redirect (e.g. `http://` to `https://`); the plugin refuses
+  redirects and asks you to configure the final URL directly
 - Check that your API key has the required permissions
 
 ## Sponsors
