@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_API_VERSION = "v2"
 SUPPORTED_API_VERSIONS = ("v1", "v2")
 API_TIMEOUT = 30  # seconds; keeps unattended renewals from hanging on a stalled API
+MAX_ERROR_HINT_LENGTH = 200  # characters; keeps API error bodies from flooding the error
 
 
 class Authenticator(dns_common.DNSAuthenticator):
@@ -209,8 +211,10 @@ class _PowerAdminClient:
                 return
 
             record_id = record.get("id")
-            if record_id is None:
-                logger.warning("Record found but has no ID, cannot delete")
+            # bool is excluded explicitly: it passes isinstance(..., int)
+            # but would produce URLs like records/True.
+            if isinstance(record_id, bool) or not isinstance(record_id, (int, str)):
+                logger.warning("Record found but has no usable ID, cannot delete")
                 return
 
             url = self._endpoint("zones", zone_id, "records", record_id)
@@ -358,16 +362,22 @@ class _PowerAdminClient:
 
     @staticmethod
     def _quote_txt_content(content: str) -> str:
-        """Wrap TXT record content in double quotes if not already quoted."""
+        """Wrap TXT record content in double quotes if not already quoted.
+
+        Embedded quotes and backslashes are escaped. ACME validation tokens
+        are base64url so certbot never produces them, but the client methods
+        accept arbitrary content.
+        """
         if content.startswith('"') and content.endswith('"') and len(content) >= 2:
             return content
-        return f'"{content}"'
+        escaped = content.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
 
     @staticmethod
     def _unquote_txt_content(content: str) -> str:
-        """Strip the double quotes added by _quote_txt_content, if present."""
+        """Undo the quoting and escaping added by _quote_txt_content, if present."""
         if content.startswith('"') and content.endswith('"') and len(content) >= 2:
-            return content[1:-1]
+            return re.sub(r"\\(.)", r"\1", content[1:-1])
         return content
 
     @staticmethod
@@ -389,6 +399,8 @@ class _PowerAdminClient:
             if isinstance(error_data, dict):
                 message = error_data.get("message") or error_data.get("error")
                 if isinstance(message, str) and message:
+                    if len(message) > MAX_ERROR_HINT_LENGTH:
+                        message = message[:MAX_ERROR_HINT_LENGTH] + "..."
                     hint = f" ({message})"
         except (ValueError, KeyError):
             # Malformed or non-JSON body; fall back to status-code hints below.

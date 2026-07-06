@@ -72,7 +72,9 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
                 "api-version": API_VERSION,
             }[key]
         )
-        self.assertIs(auth._get_poweradmin_client(), auth._get_poweradmin_client())
+        client = auth._get_poweradmin_client()
+        self.addCleanup(client.close)
+        self.assertIs(client, auth._get_poweradmin_client())
 
     def test_missing_credentials_raise_plugin_error(self) -> None:
         """Missing URL/key raise an explicit error (asserts would vanish under -O)."""
@@ -133,7 +135,9 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
         )
         auth._validate_credentials(credentials)
         auth.credentials = credentials
-        self.assertEqual(auth._get_poweradmin_client().api_version, "v1")
+        client = auth._get_poweradmin_client()
+        self.addCleanup(client.close)
+        self.assertEqual(client.api_version, "v1")
 
 
 class PowerAdminClientTest(TestCase):
@@ -147,6 +151,7 @@ class PowerAdminClientTest(TestCase):
         self.adapter = requests_mock.Adapter()
         self.client = _PowerAdminClient(API_URL, API_KEY, API_VERSION)
         self.client.session.mount("https://", self.adapter)
+        self.addCleanup(self.client.close)
 
     def _register_zones_response(
         self, zones: list[dict] | None = None, api_v2_format: bool = False
@@ -625,6 +630,45 @@ class PowerAdminClientTest(TestCase):
 
         delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
         self.assertEqual(len(delete_requests), 0)
+
+    def test_record_with_unusable_id_is_not_deleted(self) -> None:
+        """Cleanup skips a matching record whose ID is a bool or other junk."""
+        for record_id in (True, {"nested": 1}, None):
+            with self.subTest(record_id=record_id):
+                self.adapter = requests_mock.Adapter()
+                self.client.session.mount("https://", self.adapter)
+                self._register_zones_response()
+                self._register_records_response(
+                    records=[
+                        {
+                            "id": record_id,
+                            "name": self.record_name,
+                            "type": "TXT",
+                            "content": self.record_content,
+                        }
+                    ]
+                )
+
+                self.client.del_txt_record(DOMAIN, self.record_name, self.record_content)
+
+                delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
+                self.assertEqual(len(delete_requests), 0)
+
+    def test_quote_escapes_embedded_quotes_and_backslashes(self) -> None:
+        """Quoting escapes special characters and unquoting round-trips them."""
+        for content in ('a"b', "a\\b", '\\"', "ends with \\", "plain-token"):
+            with self.subTest(content=content):
+                quoted = _PowerAdminClient._quote_txt_content(content)
+                self.assertTrue(quoted.startswith('"') and quoted.endswith('"'))
+                self.assertEqual(_PowerAdminClient._unquote_txt_content(quoted), content)
+
+    def test_error_hint_truncates_long_message(self) -> None:
+        """A huge API error body is truncated instead of flooding the error message."""
+        self._register_zones_failure(status_code=500, json={"message": "x" * 5000})
+
+        message = self._assert_add_raises()
+        self.assertIn("x" * dns_poweradmin.MAX_ERROR_HINT_LENGTH + "...", message)
+        self.assertNotIn("x" * (dns_poweradmin.MAX_ERROR_HINT_LENGTH + 1), message)
 
     def test_string_record_id_is_url_encoded(self) -> None:
         """A string record ID with reserved characters is quoted in the DELETE URL."""
