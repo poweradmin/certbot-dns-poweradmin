@@ -73,6 +73,17 @@ class Authenticator(dns_common.DNSAuthenticator):
         self._validate_api_url(api_url)
         if not api_key:
             raise errors.PluginError("PowerAdmin API key is required (dns_poweradmin_api_key)")
+        # requests refuses a header value with leading whitespace or CR/LF
+        # by raising an error that echoes the full value, which would leak
+        # the key into the terminal and letsencrypt.log. Reject it here,
+        # without echoing it. Trailing whitespace would pass requests but
+        # silently break authentication, so it is rejected too.
+        if api_key != api_key.strip() or re.search(r"[\r\n]", api_key):
+            raise errors.PluginError(
+                "PowerAdmin API key must not contain leading/trailing "
+                "whitespace or line breaks (check dns_poweradmin_api_key "
+                "in the credentials file)"
+            )
         if api_version and api_version.lower() not in SUPPORTED_API_VERSIONS:
             raise errors.PluginError(
                 f"Invalid API version: {api_version}. "
@@ -266,7 +277,12 @@ class _PowerAdminClient:
                     "proxy or cache in front of PowerAdmin."
                 )
             if 300 <= response.status_code < 400:
-                location = response.headers.get("Location", "<no Location header>")
+                # The Location header is server-controlled text, same as a
+                # JSON error body: sanitize before echoing it.
+                location = (
+                    self._sanitize_server_text(response.headers.get("Location", ""))
+                    or "<no Location header>"
+                )
                 raise errors.PluginError(
                     f"PowerAdmin API redirected {method} {url} to {location}. "
                     "Set dns_poweradmin_api_url to the final URL "
@@ -276,7 +292,11 @@ class _PowerAdminClient:
             return response
         except requests.exceptions.HTTPError as e:
             hint = self._get_error_hint(e.response)
-            raise errors.PluginError(f"PowerAdmin API error: {e}{hint}") from e
+            # str(e) embeds the server's status-line reason phrase, which
+            # can carry the same control characters as a JSON error body.
+            raise errors.PluginError(
+                f"PowerAdmin API error: {self._sanitize_server_text(str(e))}{hint}"
+            ) from e
         except requests.exceptions.RequestException as e:
             raise errors.PluginError(f"Error communicating with PowerAdmin API: {e}") from e
 
@@ -406,6 +426,19 @@ class _PowerAdminClient:
         return content
 
     @staticmethod
+    def _sanitize_server_text(text: str) -> str:
+        """Neutralize server-supplied text before echoing it to the terminal.
+
+        Strips control characters (newlines, ANSI escapes) a broken or
+        hostile server could embed, and truncates so a huge value cannot
+        flood the error message.
+        """
+        text = re.sub(r"[\x00-\x1f\x7f-\x9f]+", " ", text).strip()
+        if len(text) > MAX_ERROR_HINT_LENGTH:
+            text = text[:MAX_ERROR_HINT_LENGTH] + "..."
+        return text
+
+    @staticmethod
     def _get_error_hint(response: requests.Response | None) -> str:
         """Extract error hint from API response.
 
@@ -424,12 +457,7 @@ class _PowerAdminClient:
             if isinstance(error_data, dict):
                 message = error_data.get("message") or error_data.get("error")
                 if isinstance(message, str):
-                    # The hint is echoed to the user's terminal; strip control
-                    # characters (newlines, ANSI escapes) a broken or hostile
-                    # server could embed.
-                    message = re.sub(r"[\x00-\x1f\x7f-\x9f]+", " ", message).strip()
-                    if len(message) > MAX_ERROR_HINT_LENGTH:
-                        message = message[:MAX_ERROR_HINT_LENGTH] + "..."
+                    message = _PowerAdminClient._sanitize_server_text(message)
                     if message:
                         hint = f" ({message})"
         except (ValueError, KeyError):

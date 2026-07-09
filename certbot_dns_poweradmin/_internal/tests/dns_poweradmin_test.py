@@ -133,6 +133,27 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
                 self._validate_with_url(url)
             self.assertIn("query string or fragment", str(context.exception))
 
+    def test_api_key_with_bad_whitespace_is_rejected_without_echo(self) -> None:
+        """A key with leading/trailing whitespace or line breaks fails at setup.
+
+        Left unchecked, requests would reject the header itself with an
+        error that echoes the full key into the terminal and log.
+        """
+        auth = Authenticator(self.config, "poweradmin")
+        for api_key in (" secretkey", "secretkey ", "secret\nkey", "secret\rkey"):
+            with self.subTest(api_key=api_key):
+                credentials = mock.MagicMock(
+                    conf=lambda key, api_key=api_key: {
+                        "api-url": API_URL,
+                        "api-key": api_key,
+                        "api-version": API_VERSION,
+                    }[key]
+                )
+                with self.assertRaises(errors.PluginError) as context:
+                    auth._validate_credentials(credentials)
+                self.assertIn("whitespace", str(context.exception))
+                self.assertNotIn("secret", str(context.exception))
+
     def test_api_version_is_case_insensitive(self) -> None:
         """An uppercase api_version (e.g. V1) validates and reaches the client lowercased."""
         auth = Authenticator(self.config, "poweradmin")
@@ -698,6 +719,28 @@ class PowerAdminClientTest(TestCase):
 
         message = self._assert_add_raises()
         self.assertIn("PowerAdmin API server error", message)
+
+    def test_redirect_location_is_sanitized(self) -> None:
+        """Control characters in a Location header never reach the terminal raw."""
+        self._register_zones_failure(
+            status_code=302,
+            headers={"Location": "\x1b]0;pwned\x07\x1b[2Jhttps://evil.example/"},
+        )
+
+        message = self._assert_add_raises()
+        self.assertIn("redirected", message)
+        self.assertIn("evil.example", message)
+        for char in ("\x1b", "\x07"):
+            self.assertNotIn(char, message)
+
+    def test_error_reason_phrase_is_sanitized(self) -> None:
+        """Control characters in the status-line reason phrase are stripped."""
+        self._register_zones_failure(status_code=500, reason="Server\x1b[31m Error\x07")
+
+        message = self._assert_add_raises()
+        self.assertIn("500", message)
+        for char in ("\x1b", "\x07"):
+            self.assertNotIn(char, message)
 
     def test_zone_listing_304_raises_distinct_error(self) -> None:
         """An impossible 304 fails loudly and is not mislabeled as a redirect."""
