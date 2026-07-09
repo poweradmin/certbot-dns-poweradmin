@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.4...v0.2.5) (2026-07-09)
+
+
+### Bug Fixes
+
+* sanitize server-supplied record name before logging disabled records ([45e15d2](https://github.com/poweradmin/certbot-dns-poweradmin/commit/45e15d2302bad503d245d15759dbcdfbf05844a2))
+
 ## [0.2.4](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.3...v0.2.4) (2026-07-09)
 
 
