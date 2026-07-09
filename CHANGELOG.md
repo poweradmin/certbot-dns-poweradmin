@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.3...v0.2.4) (2026-07-09)
+
+
+### Bug Fixes
+
+* sanitize redirect Location and reason phrase in errors, reject API keys with whitespace/line breaks ([fd78639](https://github.com/poweradmin/certbot-dns-poweradmin/commit/fd7863945f4872a917b76a0ad3843dba98f321ba))
+
 ## [0.2.3](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.2...v0.2.3) (2026-07-06)
 
 
