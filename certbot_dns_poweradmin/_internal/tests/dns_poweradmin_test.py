@@ -662,6 +662,32 @@ class PowerAdminClientTest(TestCase):
         delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
         self.assertEqual(len(delete_requests), 0)
 
+    def test_disabled_record_log_sanitizes_server_supplied_name(self) -> None:
+        """A hostile record name from the API never reaches the log raw."""
+        self._register_zones_response()
+        self._register_records_response(
+            records=[
+                {
+                    "id": 5,
+                    "name": "evil\x1b]0;pwned\x07\nINFO: forged log line",
+                    "type": "TXT",
+                    "content": self.record_content,
+                    "disabled": True,
+                }
+            ]
+        )
+        self._register_add_record_response()
+
+        with self.assertLogs(dns_poweradmin.logger, level="DEBUG") as logs:
+            self.client.add_txt_record(
+                DOMAIN, self.record_name, self.record_content, self.record_ttl
+            )
+
+        disabled_logs = [m for m in logs.output if "Ignoring disabled" in m]
+        self.assertEqual(len(disabled_logs), 1)
+        for char in ("\x1b", "\x07", "\n"):
+            self.assertNotIn(char, disabled_logs[0])
+
     def test_record_with_unusable_id_is_not_deleted(self) -> None:
         """Cleanup skips a matching record whose ID is a bool or other junk."""
         for record_id in (True, {"nested": 1}, None):

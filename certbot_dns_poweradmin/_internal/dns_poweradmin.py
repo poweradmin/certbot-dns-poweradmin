@@ -379,7 +379,12 @@ class _PowerAdminClient:
                 continue
 
             if record.get("disabled"):
-                logger.debug("Ignoring disabled TXT record for %s", record.get("name"))
+                # The name is server-supplied text; sanitize like every other
+                # value echoed from an API response.
+                logger.debug(
+                    "Ignoring disabled TXT record for %s",
+                    self._sanitize_server_text(str(record.get("name"))),
+                )
                 continue
 
             stored_name = record.get("name")
