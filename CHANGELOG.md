@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.5...v0.2.6) (2026-07-26)
+
+
+### Documentation
+
+* extend compatibility table to Poweradmin 4.4.x ([57710d8](https://github.com/poweradmin/certbot-dns-poweradmin/commit/57710d89ced4b0d9632c6d5bc17807071cfe9f71))
+
 ## [0.2.5](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.4...v0.2.5) (2026-07-09)
 
 
