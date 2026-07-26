@@ -10,8 +10,10 @@ updates:
       timezone: "Europe/Vilnius"
     cooldown:
       default-days: 7
+    # "deps:" type routes commits into release-please's Dependency Updates
+    # changelog section; actions/pre-commit bumps stay hidden as "ci".
     commit-message:
-      prefix: "chore(deps)"
+      prefix: "deps"
     groups:
       python-minor:
         patterns:
@@ -31,7 +33,7 @@ updates:
     cooldown:
       default-days: 7
     commit-message:
-      prefix: "chore(deps)"
+      prefix: "ci"
     groups:
       github-actions:
         patterns:
@@ -48,7 +50,7 @@ updates:
     cooldown:
       default-days: 7
     commit-message:
-      prefix: "chore(deps)"
+      prefix: "ci"
     groups:
       pre-commit:
         patterns:
