@@ -5,11 +5,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "thursday"
+      day: "saturday"
       time: "14:00"
       timezone: "Europe/Vilnius"
     cooldown:
-      default-days: 7
+      default-days: 3
     # "deps:" type routes commits into release-please's Dependency Updates
     # changelog section; actions/pre-commit bumps stay hidden as "ci".
     commit-message:
@@ -27,11 +27,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "friday"
+      day: "saturday"
       time: "15:00"
       timezone: "Europe/Vilnius"
     cooldown:
-      default-days: 7
+      default-days: 3
     commit-message:
       prefix: "ci"
     groups:
@@ -48,7 +48,7 @@ updates:
       time: "14:00"
       timezone: "Europe/Vilnius"
     cooldown:
-      default-days: 7
+      default-days: 3
     commit-message:
       prefix: "ci"
     groups:
