@@ -4,13 +4,11 @@ on:
   schedule:
     - cron: "0 7 * * 0"
   workflow_dispatch:
-  # Path-scoped so this only fires when the declared dependencies actually
-  # change -- a lowered floor is caught on the PR, not on the next Monday.
+  # Runs on every PR rather than path-scoped: pip-audit is a required
+  # status check, and a check that never reports leaves the PR stuck on
+  # "Expected -- Waiting for status to be reported" instead of failing.
   pull_request:
     branches: [main]
-    paths:
-      - "pyproject.toml"
-      - ".github/workflows/audit.yml"
 
 permissions:
   contents: read
