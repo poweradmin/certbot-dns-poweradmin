@@ -117,3 +117,5 @@ known-first-party = ["certbot_dns_poweradmin"]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
+
+# temporary: verifying the Audit workflow pull_request trigger fires
