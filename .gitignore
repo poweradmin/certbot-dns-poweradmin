@@ -23,3 +23,9 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# AI assistant instruction files
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.claude/
