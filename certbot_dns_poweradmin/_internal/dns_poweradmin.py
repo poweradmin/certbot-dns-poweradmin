@@ -89,6 +89,12 @@ class Authenticator(dns_common.DNSAuthenticator):
                 f"Invalid API version: {api_version}. "
                 f"Supported versions: {', '.join(SUPPORTED_API_VERSIONS)}"
             )
+        if api_version and api_version.lower() == "v1":
+            logger.warning(
+                "PowerAdmin API v1 is deprecated and only works with Poweradmin "
+                "below 4.5.0; set dns_poweradmin_api_version = v2 (or remove it). "
+                "Support for v1 will be dropped in the next major release."
+            )
 
     @staticmethod
     def _validate_api_url(api_url: str) -> None:
@@ -291,6 +297,17 @@ class _PowerAdminClient:
             response.raise_for_status()
             return response
         except requests.exceptions.HTTPError as e:
+            if (
+                self.api_version == "v1"
+                and e.response is not None
+                and e.response.status_code == 410
+            ):
+                # Poweradmin 4.5.0 removed API v1 and answers 410 Gone on every v1 route.
+                raise errors.PluginError(
+                    f"PowerAdmin API v1 is no longer available (410 Gone for {method} {url}). "
+                    "Poweradmin 4.5.0 removed API v1: set dns_poweradmin_api_version = v2 "
+                    "in the credentials file."
+                ) from e
             hint = self._get_error_hint(e.response)
             # str(e) embeds the server's status-line reason phrase, which
             # can carry the same control characters as a JSON error body.

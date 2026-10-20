@@ -170,6 +170,33 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
         self.addCleanup(client.close)
         self.assertEqual(client.api_version, "v1")
 
+    def _validate_with_version(self, api_version: str) -> None:
+        auth = Authenticator(self.config, "poweradmin")
+        credentials = mock.MagicMock(
+            conf=lambda key: {
+                "api-url": API_URL,
+                "api-key": API_KEY,
+                "api-version": api_version,
+            }[key]
+        )
+        auth._validate_credentials(credentials)
+
+    def test_api_v1_logs_deprecation_warning(self) -> None:
+        """Configuring v1 warns that it only works with Poweradmin below 4.5.0."""
+        for api_version in ("v1", "V1"):
+            with (
+                self.subTest(api_version=api_version),
+                self.assertLogs(dns_poweradmin.logger, level="WARNING") as logs,
+            ):
+                self._validate_with_version(api_version)
+            self.assertIn("deprecated", logs.output[0])
+            self.assertIn("4.5.0", logs.output[0])
+
+    def test_api_v2_logs_no_deprecation_warning(self) -> None:
+        """The default v2 setup stays quiet."""
+        with self.assertNoLogs(dns_poweradmin.logger, level="WARNING"):
+            self._validate_with_version("v2")
+
 
 class PowerAdminClientTest(TestCase):
     """Tests for _PowerAdminClient class."""
@@ -455,6 +482,29 @@ class PowerAdminClientTest(TestCase):
             with self.subTest(exc=exc.__name__):
                 self._register_zones_failure(exc=exc)
                 self.assertIn("Error communicating with PowerAdmin API", self._assert_add_raises())
+
+    def test_v1_gone_points_at_api_version_setting(self) -> None:
+        """A 410 on a v1 call (Poweradmin 4.5.0+) tells the user to switch to v2."""
+        client = _PowerAdminClient(API_URL, API_KEY, "v1")
+        self.addCleanup(client.close)
+        client.session.mount("https://", self.adapter)
+        self.adapter.register_uri(
+            "GET", f"{API_URL}/api/v1/zones", status_code=410, json={"error": "Gone"}
+        )
+
+        with self.assertRaises(errors.PluginError) as context:
+            client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+        message = str(context.exception)
+        self.assertIn("410", message)
+        self.assertIn("dns_poweradmin_api_version = v2", message)
+
+    def test_v2_gone_keeps_generic_error(self) -> None:
+        """A 410 on v2 is not misreported as the v1 removal."""
+        self._register_zones_failure(status_code=410, json={"message": "Gone"})
+
+        message = self._assert_add_raises()
+        self.assertIn("410", message)
+        self.assertNotIn("dns_poweradmin_api_version", message)
 
     def test_requests_use_timeout(self) -> None:
         """Every API request carries a timeout so renewals cannot hang forever."""
