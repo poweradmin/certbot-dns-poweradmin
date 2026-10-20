@@ -13,7 +13,7 @@ This plugin automates the process of completing a `dns-01` challenge by creating
 
 | Plugin Version | Poweradmin Version | Python | Certbot |
 |---|---|---|---|
-| 0.2.x | 4.1.0 - 4.4.x | >= 3.10 | >= 5.1.0 |
+| 0.2.x | 4.1.0 - 4.5.x | >= 3.10 | >= 5.1.0 |
 | 0.1.x | 4.1.0 - 4.2.x | >= 3.10 | >= 5.1.0 |
 
 ## Installation
@@ -24,7 +24,7 @@ pip install certbot-dns-poweradmin
 
 ## PowerAdmin Configuration
 
-Your PowerAdmin installation needs to have the API enabled. The plugin supports both API v1 and v2.
+Your PowerAdmin installation needs to have the API enabled. The plugin uses API v2 by default. API v1 is deprecated and was removed in Poweradmin 4.5.0.
 
 You'll need an API key with permissions to:
 - List zones
@@ -41,7 +41,7 @@ dns_poweradmin_api_key = your-api-key-here
 dns_poweradmin_api_version = v2
 ```
 
-The `api_version` is optional and defaults to `v2`. Set it to `v1` if your PowerAdmin installation uses the older API.
+The `api_version` is optional and defaults to `v2`. Setting it to `v1` is deprecated: it works only with Poweradmin below 4.5.0, logs a warning, and will be removed in the next major release of this plugin. Poweradmin 4.5.0 and later answer `410 Gone` on every API v1 request, so use `v2` there.
 
 2. Secure the credential file:
 
