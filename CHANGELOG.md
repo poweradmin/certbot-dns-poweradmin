@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.7](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.6...v0.2.7) (2026-10-20)
+
+
+### Features
+
+* warn that API v1 is deprecated and report 410 Gone from Poweradmin 4.5.0 clearly ([f3c97cd](https://github.com/poweradmin/certbot-dns-poweradmin/commit/f3c97cd5569e5308ab7fd5d37830fc25af08c5e8))
+* warn that API v1 is deprecated and report 410 Gone from Poweradmin 4.5.0 clearly (closes [#62](https://github.com/poweradmin/certbot-dns-poweradmin/issues/62)) ([91d85e3](https://github.com/poweradmin/certbot-dns-poweradmin/commit/91d85e3edd8b4379f31bd1544530916922176b8c))
+
+
+### Documentation
+
+* add Poweradmin 4.5.x to the compatibility table and mark API v1 as deprecated ([3a27fac](https://github.com/poweradmin/certbot-dns-poweradmin/commit/3a27face2ff65ffd03778ee89171b00eab43074d))
+
 ## [0.2.6](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.5...v0.2.6) (2026-07-26)
 
 
