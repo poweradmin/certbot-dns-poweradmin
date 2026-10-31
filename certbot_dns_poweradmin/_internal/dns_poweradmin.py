@@ -17,7 +17,7 @@ from certbot.plugins.dns_common import CredentialsConfiguration
 logger = logging.getLogger(__name__)
 
 DEFAULT_API_VERSION = "v2"
-SUPPORTED_API_VERSIONS = ("v1", "v2")
+SUPPORTED_API_VERSIONS = ("v2",)
 API_TIMEOUT = 30  # seconds; keeps unattended renewals from hanging on a stalled API
 MAX_ERROR_HINT_LENGTH = 200  # characters; keeps API error bodies from flooding the error
 
@@ -84,16 +84,16 @@ class Authenticator(dns_common.DNSAuthenticator):
                 "whitespace or line breaks (check dns_poweradmin_api_key "
                 "in the credentials file)"
             )
+        if api_version and api_version.lower() == "v1":
+            raise errors.PluginError(
+                "PowerAdmin API v1 is no longer supported (Poweradmin 4.5.0 removed it): "
+                "set dns_poweradmin_api_version = v2 in the credentials file, or remove "
+                "the setting."
+            )
         if api_version and api_version.lower() not in SUPPORTED_API_VERSIONS:
             raise errors.PluginError(
                 f"Invalid API version: {api_version}. "
                 f"Supported versions: {', '.join(SUPPORTED_API_VERSIONS)}"
-            )
-        if api_version and api_version.lower() == "v1":
-            logger.warning(
-                "PowerAdmin API v1 is deprecated and only works with Poweradmin "
-                "below 4.5.0; set dns_poweradmin_api_version = v2 (or remove it). "
-                "Support for v1 will be dropped in the next major release."
             )
 
     @staticmethod
@@ -209,8 +209,8 @@ class _PowerAdminClient:
             logger.debug("TXT record already exists, skipping creation")
             return
 
-        # Create the TXT record. Content must be quoted: API v1 rejects unquoted
-        # TXT content, while v2 accepts either and quotes server-side.
+        # Create the TXT record. Content is sent quoted; v2 accepts quoted
+        # or unquoted content and quotes server-side.
         record_data = {
             "name": record_name,
             "type": "TXT",
@@ -297,17 +297,6 @@ class _PowerAdminClient:
             response.raise_for_status()
             return response
         except requests.exceptions.HTTPError as e:
-            if (
-                self.api_version == "v1"
-                and e.response is not None
-                and e.response.status_code == 410
-            ):
-                # Poweradmin 4.5.0 removed API v1 and answers 410 Gone on every v1 route.
-                raise errors.PluginError(
-                    f"PowerAdmin API v1 is no longer available (410 Gone for {method} {url}). "
-                    "Poweradmin 4.5.0 removed API v1: set dns_poweradmin_api_version = v2 "
-                    "in the credentials file."
-                ) from e
             hint = self._get_error_hint(e.response)
             # str(e) embeds the server's status-line reason phrase, which
             # can carry the same control characters as a JSON error body.
@@ -320,7 +309,7 @@ class _PowerAdminClient:
     def _fetch_items(self, url: str, key: str) -> list[dict[str, Any]]:
         """GET a listing endpoint and unwrap the response envelope.
 
-        Handles both the v1 format ({"data": [...]}) and the v2 format
+        Accepts both a flat ({"data": [...]}) and the nested v2 format
         ({"data": {key: [...]}}), skipping any malformed (non-dict) entries.
 
         Raises:
@@ -412,7 +401,7 @@ class _PowerAdminClient:
             if not self._names_equal(stored_name, record_name):
                 continue
 
-            # Content may be quoted in the API response (v1) or by the caller
+            # Content may be quoted in the API response or by the caller
             if self._unquote_txt_content(stored_content) == self._unquote_txt_content(
                 record_content
             ):
