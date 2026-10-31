@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.8...v0.3.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* drop API v1 support
+
+### Features
+
+* drop API v1 support ([8ee7cb1](https://github.com/poweradmin/certbot-dns-poweradmin/commit/8ee7cb1fb694464e60ad6cc907fa1189855aca91))
+
 ## [0.2.8](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.7...v0.2.8) (2026-10-30)
 
 
