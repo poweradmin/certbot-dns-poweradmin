@@ -13,6 +13,7 @@ This plugin automates the process of completing a `dns-01` challenge by creating
 
 | Plugin Version | Poweradmin Version | Python | Certbot |
 |---|---|---|---|
+| 0.3.x | 4.1.0 - 4.5.x | >= 3.10 | >= 5.9.0 |
 | 0.2.x | 4.1.0 - 4.5.x | >= 3.10 | >= 5.1.0 (0.2.8+: >= 5.9.0) |
 | 0.1.x | 4.1.0 - 4.2.x | >= 3.10 | >= 5.1.0 |
 
@@ -24,7 +25,7 @@ pip install certbot-dns-poweradmin
 
 ## PowerAdmin Configuration
 
-Your PowerAdmin installation needs to have the API enabled. The plugin uses API v2 by default. API v1 is deprecated and was removed in Poweradmin 4.5.0.
+Your PowerAdmin installation needs to have the API enabled. The plugin uses API v2. API v1 was removed in Poweradmin 4.5.0 and is no longer supported by the plugin (since 0.3.0).
 
 You'll need an API key with permissions to:
 - List zones
@@ -41,7 +42,7 @@ dns_poweradmin_api_key = your-api-key-here
 dns_poweradmin_api_version = v2
 ```
 
-The `api_version` is optional and defaults to `v2`. Setting it to `v1` is deprecated: it works only with Poweradmin below 4.5.0, logs a warning, and will be removed in the next major release of this plugin. Poweradmin 4.5.0 and later answer `410 Gone` on every API v1 request, so use `v2` there.
+The `api_version` is optional and defaults to `v2`, the only supported value. Setting it to `v1` fails with an error; use plugin 0.2.x if you still need API v1.
 
 2. Secure the credential file:
 
@@ -152,7 +153,7 @@ certbot plugins  # should show dns-poweradmin
 
 - Use the base URL of your PowerAdmin installation as `dns_poweradmin_api_url`
   (e.g. `https://poweradmin.example.com`), including the `https://` scheme and
-  without the `/api` path — the plugin appends `/api/v1` or `/api/v2` itself
+  without the `/api` path — the plugin appends `/api/v2` itself
 - The URL must not redirect (e.g. `http://` to `https://`); the plugin refuses
   redirects and asks you to configure the final URL directly
 - Check that your API key has the required permissions

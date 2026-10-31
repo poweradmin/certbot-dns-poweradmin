@@ -34,7 +34,7 @@ Trigger the `Publish to TestPyPI` workflow via the Actions tab (`workflow_dispat
 
 ## Technical Notes
 
-- Supports API v1 (flat responses) and v2 (nested wrapped responses)
+- Uses API v2 (nested wrapped responses); flat responses are still parsed
 - Parses both `{"data": [...]}` and `{"data": {"zones": [...]}}` / `{"data": {"records": [...]}}`
 - Record creation is idempotent (checks for existing records)
 - Cleanup silently handles missing zones/records

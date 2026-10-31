@@ -56,13 +56,9 @@ including for renewal, and cannot be silenced except by addressing the issue
 API Version
 -----------
 
-PowerAdmin supports two API versions:
-
-- ``v1``: Stable API version
-- ``v2``: Enhanced API with additional features (default)
-
-You can specify the API version in your credential file using the
-``dns_poweradmin_api_version`` option. If not specified, ``v2`` is used by default.
+The plugin uses PowerAdmin API ``v2``. The optional ``dns_poweradmin_api_version``
+option accepts only ``v2``; API ``v1`` was removed in Poweradmin 4.5.0 and is no
+longer supported by this plugin.
 
 
 Examples
