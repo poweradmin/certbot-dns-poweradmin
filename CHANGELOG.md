@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.7...v0.2.8) (2026-10-30)
+
+
+### Dependency Updates
+
+* raise certbot and acme to 5.9.0 and requests to 2.34.2 ([20468a6](https://github.com/poweradmin/certbot-dns-poweradmin/commit/20468a63e7f039f789931a1bde1c4a5e1124fe47))
+
 ## [0.2.7](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.6...v0.2.7) (2026-10-20)
 
 
