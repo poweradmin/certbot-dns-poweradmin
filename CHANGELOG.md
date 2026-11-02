@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.3.0...v0.3.1) (2026-11-02)
+
+
+### Dependency Updates
+
+* raise urllib3 dev minimum to 2.8.0 ([527f35a](https://github.com/poweradmin/certbot-dns-poweradmin/commit/527f35a726d6566697877cc4b7354a935ee0e13f))
+
 ## [0.3.0](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.2.8...v0.3.0) (2026-10-31)
 
 
