@@ -41,7 +41,7 @@ dns-poweradmin = "certbot_dns_poweradmin._internal.dns_poweradmin:Authenticator"
 dev = [
     # CVE floors for transitive deps (audited in CI; the plugin does not
     # import these, so end-user installs are left to certbot's own pins)
-    "urllib3>=2.6.0",
+    "urllib3>=2.8.0",
     "pyopenssl>=26.0.0",
     "requests-mock>=1.11.0",
     "pytest>=7.0.0",
