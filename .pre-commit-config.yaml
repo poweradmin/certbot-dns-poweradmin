@@ -22,4 +22,3 @@ repos:
         additional_dependencies:
           - types-requests>=2.33.0.20261030
         args: [--strict]
-        exclude: ^setup\.py$

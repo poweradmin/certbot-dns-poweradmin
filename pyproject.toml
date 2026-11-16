@@ -16,7 +16,6 @@ dependencies = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -54,6 +53,8 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["certbot_dns_poweradmin"]
+# Tests stay in the sdist for packagers but are not installed.
+exclude = ["certbot_dns_poweradmin/_internal/tests"]
 
 [build-system]
 requires = ["hatchling"]
@@ -68,7 +69,6 @@ show_error_codes = true
 exclude = [
     "build/",
     "dist/",
-    "setup.py",
 ]
 
 [[tool.mypy.overrides]]
