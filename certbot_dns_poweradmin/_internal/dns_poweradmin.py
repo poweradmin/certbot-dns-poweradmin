@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import logging
 import re
 from collections.abc import Callable
@@ -98,16 +99,29 @@ class Authenticator(dns_common.DNSAuthenticator):
 
     @staticmethod
     def _validate_api_url(api_url: str) -> None:
-        parsed = urlparse(api_url)
+        # Any '@' may mark embedded credentials (even in a URL too malformed
+        # to parse), so such a URL is never echoed back.
+        shown = "<hidden, contains '@'>" if "@" in api_url else api_url
+        try:
+            parsed = urlparse(api_url)
+        except ValueError:
+            raise errors.PluginError(f"PowerAdmin API URL is malformed (got: {shown})") from None
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise errors.PluginError(
-                f"PowerAdmin API URL must start with http:// or https:// (got: {api_url})"
+                f"PowerAdmin API URL must start with http:// or https:// (got: {shown})"
+            )
+        # The URL is echoed in error messages and logs, so embedded
+        # credentials would leak there; refuse without echoing it.
+        if parsed.username is not None or parsed.password is not None:
+            raise errors.PluginError(
+                "PowerAdmin API URL must not contain a username or password "
+                "(check dns_poweradmin_api_url in the credentials file)"
             )
         # The client appends /api/<version>/... to the URL, so a query string
         # or fragment would corrupt every request URL it builds.
         if parsed.query or parsed.fragment:
             raise errors.PluginError(
-                f"PowerAdmin API URL must not contain a query string or fragment (got: {api_url})"
+                f"PowerAdmin API URL must not contain a query string or fragment (got: {shown})"
             )
         # The client appends /api/<version>/... itself; a URL that already
         # ends in /api (or /api/v1, /api/v2) would silently 404 on every call.
@@ -115,8 +129,25 @@ class Authenticator(dns_common.DNSAuthenticator):
         if path.endswith(("/api", "/api/v1", "/api/v2")):
             raise errors.PluginError(
                 f"PowerAdmin API URL must be the base URL of your installation, "
-                f"without the /api path (got: {api_url})"
+                f"without the /api path (got: {shown})"
             )
+        if parsed.scheme == "http" and not Authenticator._is_loopback(parsed.hostname):
+            logger.warning(
+                "PowerAdmin API URL uses plain HTTP; the API key is sent unencrypted. "
+                "Use https:// for dns_poweradmin_api_url."
+            )
+
+    @staticmethod
+    def _is_loopback(hostname: str | None) -> bool:
+        if not hostname:
+            return False
+        hostname = hostname.rstrip(".")
+        if hostname.lower() == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            return False
 
     def _perform(self, domain: str, validation_name: str, validation: str) -> None:
         self._get_poweradmin_client().add_txt_record(domain, validation_name, validation, self.ttl)
@@ -306,7 +337,9 @@ class _PowerAdminClient:
         except requests.exceptions.RequestException as e:
             raise errors.PluginError(f"Error communicating with PowerAdmin API: {e}") from e
 
-    def _fetch_items(self, url: str, key: str) -> list[dict[str, Any]]:
+    def _fetch_items(
+        self, url: str, key: str, params: dict[str, str] | None = None
+    ) -> list[dict[str, Any]]:
         """GET a listing endpoint and unwrap the response envelope.
 
         Accepts both a flat ({"data": [...]}) and the nested v2 format
@@ -317,7 +350,7 @@ class _PowerAdminClient:
                 unexpected shape. Auth and connectivity problems must surface
                 as themselves, not be mistaken for "zone not found".
         """
-        response = self._request("GET", url)
+        response = self._request("GET", url, params=params)
         try:
             items: Any = response.json()
         except requests.exceptions.JSONDecodeError as e:
@@ -378,7 +411,11 @@ class _PowerAdminClient:
         Returns:
             The record dict if found, None otherwise.
         """
-        records = self._fetch_items(self._endpoint("zones", zone_id, "records"), "records")
+        # Server-side type filter avoids listing the whole zone; the type is
+        # still checked below in case a server ignores the parameter.
+        records = self._fetch_items(
+            self._endpoint("zones", zone_id, "records"), "records", params={"type": "TXT"}
+        )
 
         for record in records:
             if record.get("type") != "TXT":
