@@ -193,6 +193,55 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
             self.assertIn("no longer supported", message)
             self.assertIn("dns_poweradmin_api_version = v2", message)
 
+    def test_api_url_with_userinfo_is_rejected_without_echo(self) -> None:
+        """Credentials embedded in the URL would leak into error messages."""
+        for url in (
+            "https://user:s3cret@poweradmin.example.com",
+            "https://user@poweradmin.example.com",
+        ):
+            with self.subTest(url=url), self.assertRaises(errors.PluginError) as context:
+                self._validate_with_url(url)
+            self.assertIn("username or password", str(context.exception))
+            self.assertNotIn("s3cret", str(context.exception))
+
+    def test_invalid_url_with_credentials_is_not_echoed(self) -> None:
+        """A URL failing an earlier check still never echoes its password."""
+        for url in (
+            "htps://user:s3cret@poweradmin.example.com",
+            "user:s3cret@poweradmin.example.com",
+        ):
+            with self.subTest(url=url), self.assertRaises(errors.PluginError) as context:
+                self._validate_with_url(url)
+            self.assertNotIn("s3cret", str(context.exception))
+
+    def test_malformed_url_raises_plugin_error(self) -> None:
+        """urlparse's ValueError on bad brackets surfaces as a PluginError."""
+        for url in ("https://[::1", "http://[bad]"):
+            with self.subTest(url=url), self.assertRaises(errors.PluginError) as context:
+                self._validate_with_url(url)
+            self.assertIn("malformed", str(context.exception))
+
+    def test_plain_http_url_logs_warning(self) -> None:
+        """The API key would travel unencrypted over plain HTTP."""
+        with self.assertLogs(dns_poweradmin.logger, level="WARNING") as logs:
+            self._validate_with_url("http://poweradmin.example.com")
+        self.assertIn("plain HTTP", logs.output[0])
+
+    def test_plain_http_loopback_url_logs_no_warning(self) -> None:
+        """Loopback traffic never leaves the host, so plain HTTP is fine."""
+        for url in (
+            "http://localhost:8080",
+            "http://localhost.",
+            "http://127.0.0.1",
+            "http://[::1]:8080",
+        ):
+            with self.subTest(url=url), self.assertNoLogs(dns_poweradmin.logger, level="WARNING"):
+                self._validate_with_url(url)
+
+    def test_https_url_logs_no_warning(self) -> None:
+        with self.assertNoLogs(dns_poweradmin.logger, level="WARNING"):
+            self._validate_with_url(API_URL)
+
     def test_api_v2_logs_no_warning(self) -> None:
         """The default v2 setup stays quiet."""
         with self.assertNoLogs(dns_poweradmin.logger, level="WARNING"):
@@ -371,6 +420,68 @@ class PowerAdminClientTest(TestCase):
         # Verify the DELETE request was made
         delete_requests = [r for r in self.adapter.request_history if r.method == "DELETE"]
         self.assertEqual(len(delete_requests), 1)
+
+    def test_records_listing_filters_by_txt_type(self) -> None:
+        """The records listing asks the server for TXT records only."""
+        self._register_zones_response()
+        self._register_records_response()
+        self._register_add_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, self.record_content, self.record_ttl)
+
+        get_records = [
+            r for r in self.adapter.request_history if r.method == "GET" and "records" in r.path
+        ]
+        self.assertEqual(get_records[0].qs, {"type": ["txt"]})
+
+    def test_longest_matching_zone_wins(self) -> None:
+        """With example.com and sub.example.com, a.sub.example.com uses the latter."""
+        self._register_zones_response(
+            zones=[{"id": 1, "name": "example.com"}, {"id": 2, "name": "sub.example.com"}]
+        )
+        self._register_records_response(zone_id=2)
+        self._register_add_record_response(zone_id=2)
+
+        self.client.add_txt_record(
+            "a.sub.example.com", "_acme-challenge.a.sub.example.com", "token", self.record_ttl
+        )
+
+        posts = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(posts), 1)
+        self.assertTrue(posts[0].path.endswith("/zones/2/records"))
+
+    def test_wildcard_and_apex_values_coexist(self) -> None:
+        """Two challenges share one name: add posts the second, cleanup removes only its own."""
+        apex_record = {
+            "id": 100,
+            "name": self.record_name,
+            "type": "TXT",
+            "content": '"apex-token"',
+        }
+        wildcard_record = {
+            "id": 101,
+            "name": self.record_name,
+            "type": "TXT",
+            "content": '"wildcard-token"',
+        }
+        self._register_zones_response()
+        self._register_records_response(records=[apex_record])
+        self._register_add_record_response()
+
+        self.client.add_txt_record(DOMAIN, self.record_name, "wildcard-token", self.record_ttl)
+
+        posts = [r for r in self.adapter.request_history if r.method == "POST"]
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0].json()["content"], '"wildcard-token"')
+
+        self._register_records_response(records=[apex_record, wildcard_record])
+        self._register_delete_record_response(record_id=101)
+
+        self.client.del_txt_record(DOMAIN, self.record_name, "wildcard-token")
+
+        deletes = [r for r in self.adapter.request_history if r.method == "DELETE"]
+        self.assertEqual(len(deletes), 1)
+        self.assertTrue(deletes[0].path.endswith("/records/101"))
 
     def test_del_txt_record_not_found(self) -> None:
         """Test deleting a TXT record that doesn't exist."""
