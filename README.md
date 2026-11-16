@@ -34,7 +34,14 @@ You'll need an API key with permissions to:
 
 ## Usage
 
-1. Create a credential file (e.g., `/etc/letsencrypt/poweradmin.ini`):
+1. Create a credential file readable only by you (e.g., `/etc/letsencrypt/poweradmin.ini`):
+
+```
+touch /etc/letsencrypt/poweradmin.ini
+chmod 600 /etc/letsencrypt/poweradmin.ini
+```
+
+Then add your settings to it:
 
 ```ini
 dns_poweradmin_api_url = https://poweradmin.example.com
@@ -44,13 +51,7 @@ dns_poweradmin_api_version = v2
 
 The `api_version` is optional and defaults to `v2`, the only supported value. Setting it to `v1` fails with an error; use plugin 0.2.x if you still need API v1.
 
-2. Secure the credential file:
-
-```
-chmod 600 /etc/letsencrypt/poweradmin.ini
-```
-
-3. Run certbot:
+2. Run certbot:
 
 ```
 certbot certonly \
@@ -156,6 +157,9 @@ certbot plugins  # should show dns-poweradmin
   without the `/api` path — the plugin appends `/api/v2` itself
 - The URL must not redirect (e.g. `http://` to `https://`); the plugin refuses
   redirects and asks you to configure the final URL directly
+- Use `https://`: the plugin warns when the URL is plain `http://` (except
+  for `localhost`/loopback), since the API key would be sent unencrypted
+- Do not put a username or password in the URL; such a URL is rejected
 - Check that your API key has the required permissions
 
 ## Sponsors
