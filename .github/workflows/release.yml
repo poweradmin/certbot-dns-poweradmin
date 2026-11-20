@@ -12,9 +12,9 @@ jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
+    # release-please writes through the app token below, not GITHUB_TOKEN.
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
