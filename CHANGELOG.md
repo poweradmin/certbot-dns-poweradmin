@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.2](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.3.1...v0.3.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* reject credentials in the API URL, warn on plain HTTP and fetch only TXT records ([8cdf4ab](https://github.com/poweradmin/certbot-dns-poweradmin/commit/8cdf4abcc44920c43d9e3af7c628d1b72f46d733))
+
+
+### Documentation
+
+* create the credentials file with mode 600 and note API URL checks ([a52bf41](https://github.com/poweradmin/certbot-dns-poweradmin/commit/a52bf417e438f1badf3ac939e927724c479b3694))
+
 ## [0.3.1](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.3.0...v0.3.1) (2026-11-02)
 
 
