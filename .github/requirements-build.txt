@@ -1,0 +1,4 @@
+# Pinned release build tooling; also passed as PIP_CONSTRAINT so the
+# isolated build env uses this hatchling. Bumped by Dependabot.
+build==1.6.1
+hatchling==1.33.0

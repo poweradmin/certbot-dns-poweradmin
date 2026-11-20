@@ -26,10 +26,12 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build
+          pip install -r .github/requirements-build.txt
 
       - name: Build package
         run: python -m build
+        env:
+          PIP_CONSTRAINT: .github/requirements-build.txt
 
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1

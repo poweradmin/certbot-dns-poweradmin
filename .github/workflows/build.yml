@@ -90,13 +90,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install build dependencies
+      # Tags older than v0.3.4 lack the pin file; build those unpinned.
+      - name: Build package
         run: |
           python -m pip install --upgrade pip
-          pip install build
-
-      - name: Build package
-        run: python -m build
+          if [ -f .github/requirements-build.txt ]; then
+            export PIP_CONSTRAINT=.github/requirements-build.txt
+            pip install -r "$PIP_CONSTRAINT"
+          else
+            pip install build
+          fi
+          python -m build
 
       - uses: actions/upload-artifact@v7.0.2
         with:
