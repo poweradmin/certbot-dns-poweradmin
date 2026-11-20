@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.3.2...v0.3.3) (2026-11-20)
+
+
+### Documentation
+
+* update release process for trusted publishing and app token ([8bd0175](https://github.com/poweradmin/certbot-dns-poweradmin/commit/8bd01752f62d83d34fc940c2e4b29a881b184fe5))
+
 ## [0.3.2](https://github.com/poweradmin/certbot-dns-poweradmin/compare/v0.3.1...v0.3.2) (2026-11-20)
 
 
